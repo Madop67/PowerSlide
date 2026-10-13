@@ -92,6 +92,19 @@ freely, subject to the following restrictions:
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
 
+## wasm2c runtime (WABT)
+
+Path: `externals/wasm2c-rt`
+
+Source: <https://github.com/WebAssembly/wabt>
+
+The wasm2c runtime supports the macOS build, which runs the game as a wasm32
+module translated to C by `wasm2c`. Vendored version: 1.0.37. The generated
+guest C code is also wasm2c output.
+
+Licensed under the Apache License, Version 2.0. The full license text is in
+`externals/wasm2c-rt/LICENSE`.
+
 ## maspsx
 
 Source: <https://github.com/mkst/maspsx>

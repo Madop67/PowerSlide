@@ -7,6 +7,9 @@
 /dist/
 /debug/
 
+# Downloaded wasm toolchain for the macOS build (tools/macos/fetch-toolchain.sh).
+/externals/.toolchains/
+
 # User-supplied retail game files. Commit descriptors and hashes, never binaries.
 /assets/
 

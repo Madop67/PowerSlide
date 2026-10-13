@@ -3558,6 +3558,10 @@ GLAPI PFNGLGETPOINTERVKHRPROC glad_glGetPointervKHR;
 GLAPI int GLAD_GL_KHR_debug;
 #endif
 
+#if defined(CTR_NATIVE_WASM)
+#include "platform/wasm/guest_gl.h"
+#endif
+
 #ifdef __cplusplus
 }
 #endif

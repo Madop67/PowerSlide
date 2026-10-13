@@ -60,6 +60,18 @@ sudo apt install gcc-multilib
 sudo apt install libx11-dev libxext-dev libgl1-mesa-dev libasound2-dev libudev-dev libdbus-1-dev
 ```
 
+### macOS (Apple Silicon)
+
+```
+brew install cmake
+```
+
+`build-macos.sh` downloads the pinned wasm toolchain (wasi-sdk 25, WABT 1.0.37) into `externals/.toolchains/` on first run.
+
+macOS cannot run 32-bit executables, and the game depends on 32-bit pointers (retail struct layouts and asset files patched with 4-byte pointers). The macOS build therefore compiles the game to wasm32, which is also a 32-bit-pointer target, translates it back to C with `wasm2c`, and links it into a native arm64 executable. A small host layer in `platform/wasm_host/` provides file I/O (WASI), SDL3 and OpenGL. See `cmake/ctr_wasm_sandbox.cmake` for details. If the renderer starts calling a new GL function, rerun `tools/macos/gen_wasm_gl_bridge.py`.
+
+To get the disc image from a `.chd`: `brew install rom-tools`, then `chdman extractcd -i game.chd -o assets/ctr-u.cue -ob assets/ctr-u.bin`.
+
 ## Building
 
 ```
@@ -67,6 +79,7 @@ build-msvc.bat       # Windows, MSVC x86 (recommended)
 build.bat            # Windows, MinGW i686
 chmod +x build.sh
 ./build.sh           # Linux
+./build-macos.sh     # macOS (Apple Silicon)
 ```
 
 The shared CMake presets can also be used directly or selected as CLion CMake profiles:
@@ -84,6 +97,7 @@ Output:
 - MSVC: `build-msvc-x86/Release/ctr_native.exe`
 - MinGW: `build/ctr_native.exe`
 - Linux: `build/ctr_native`
+- macOS: `build-macos/ctr_native`
 
 ### Clean build
 
