@@ -245,7 +245,7 @@ void DrawEnvOffset(float *ofsX, float *ofsY)
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-// Widescreen layout. In widescreen the whole 4:3 frame is shown stretched to 16:9
+// Widescreen layout. In widescreen the whole 4:3 frame is shown stretched to the wide ratio
 // and full-screen 3D views are pre-compressed by the projection
 // (PushBuffer_SetMatrixVP). Everything else -- the HUD slots, and in menus the small
 // 3D preview windows -- is compressed here at draw time instead, which leaves game
@@ -366,7 +366,7 @@ internal b32 NativeGpu_HudSqueezeActive(void)
 
 internal s16 NativeGpu_SqueezeHudX(int x, int centerX)
 {
-	return (s16)(centerX + (int)SDL_floorf((f32)(x - centerX) * 0.75f + 0.5f));
+	return (s16)(centerX + (int)SDL_floorf((f32)(x - centerX) * NativeSettings_WideSqueeze() + 0.5f));
 }
 
 // Picks the squeeze centre and edge-anchor shift for a primitive spanning
@@ -389,26 +389,28 @@ internal b32 NativeGpu_WideLayout(int minX, int maxX, int *centerX, int *shift)
 	if (s_inHudOT && s_primAnchored && (g_settings.video.hudPosition == NATIVE_HUD_POSITION_EDGES))
 	{
 		// Left and right thirds of the screen (or of each split-screen half) move out by
-		// the 1/8 of width that the squeeze took away; the middle stays centred.
+		// half the width the squeeze took away (1/8 at 16:9); the middle stays centred.
 		const int mid = (minX + maxX) / 2;
 		const int regionW = (s_wide.anchorRegions == 2) ? width / 2 : width;
 		const int regionX = ((s_wide.anchorRegions == 2) && (mid >= width / 2)) ? width / 2 : 0;
 		const int rel = mid - regionX;
 
+		const int edgeShift = (regionW * (1000 - NativeSettings_WideSqueeze1000())) / 2000;
+
 		*centerX = regionX + regionW / 2;
 		if (rel * 10 < regionW * 4)
 		{
-			*shift = -regionW / 8;
+			*shift = -edgeShift;
 		}
 		else if (rel * 10 > regionW * 6)
 		{
-			*shift = regionW / 8;
+			*shift = edgeShift;
 		}
 	}
 	return true;
 }
 
-// Compresses a primitive's vertices to 3/4 width (see NativeGpu_WideLayout).
+// Compresses a primitive's vertices by the wide squeeze (3/4 width at 16:9; see NativeGpu_WideLayout).
 internal void NativeGpu_SqueezeHudVertices(GrVertex *vertex, int count)
 {
 	int minX = vertex[0].x;

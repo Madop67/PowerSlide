@@ -28,34 +28,23 @@
 namespace
 {
 
-// Font size for a kReferenceHeight-tall window; the whole UI scales with the
-// window height (never below kMinHeightScale) and with display DPI.
+// Font size for a kReferenceHeight-tall window. The UI grows with the window
+// height at half the rate (1.5x at twice the height), so a fullscreen menu stays
+// a comfortable fraction of the screen; it never shrinks below kMinHeightScale.
+// Display DPI is not applied on top: the window's own height already reflects it.
 constexpr float kBaseFontSize = 16.0f;
 constexpr float kReferenceHeight = 720.0f;
+constexpr float kHeightScaleRate = 0.5f;
 constexpr float kMinHeightScale = 0.75f;
 constexpr float kTitleFontScale = 1.6f;
 
-struct WindowSizePreset
-{
-	const char *label;
-	int width;
-	int height;
-};
-
-constexpr WindowSizePreset kWindowSizes[] = {
-	{"640 x 480 (4:3)", 640, 480},
-	{"960 x 720 (4:3)", 960, 720},
-	{"1280 x 960 (4:3)", 1280, 960},
-	{"1440 x 1080 (4:3)", 1440, 1080},
-	{"1280 x 720 (16:9)", 1280, 720},
-	{"1600 x 900 (16:9)", 1600, 900},
-	{"1920 x 1080 (16:9)", 1920, 1080},
-};
+// Window size presets are these heights at the picture's aspect ratio.
+constexpr int kWindowHeights[] = {480, 720, 900, 1080, 1440, 2160};
 
 constexpr const char *kDisplayModeNames[NATIVE_DISPLAY_COUNT] = {"Windowed", "Fullscreen"};
-constexpr const char *kAspectModeNames[NATIVE_ASPECT_COUNT] = {"Original (4:3)", "Widescreen (16:9)", "Stretch to window"};
+constexpr const char *kAspectModeNames[NATIVE_ASPECT_COUNT] = {"Original (4:3)", "Widescreen (16:9)", "Ultrawide (21:9)", "Custom",
+                                                               "Stretch to window"};
 constexpr const char *kScaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"Sharp (nearest)", "Smooth (bilinear)"};
-constexpr int kFrameRates[] = {NATIVE_FRAME_RATE_ORIGINAL, 60, 120, 144, 165, 240};
 constexpr const char *kHudPositionNames[NATIVE_HUD_POSITION_COUNT] = {"Screen edges", "Centre (4:3)"};
 
 // CTR palette, taken from the retail menus: orange and yellow on deep blue.
@@ -91,6 +80,10 @@ SDL_JoystickID s_menuController = 0;
 // Input tab's player to select when it next draws (the player whose controller opened the menu), or -1.
 int s_selectPlayerTab = -1;
 float s_styleScale = 0.0f;
+// Video tab's custom window size fields, filled from the window when first shown.
+bool s_customWindowSize = false;
+int s_customWindowWidth = 0;
+int s_customWindowHeight = 0;
 
 void ApplyColors(ImGuiStyle &style)
 {
@@ -179,11 +172,7 @@ void LoadFont()
 
 void UpdateStyleScale()
 {
-	float scale = SDL_GetWindowDisplayScale(s_window);
-	if (scale <= 0.0f)
-	{
-		scale = 1.0f;
-	}
+	float scale = 1.0f;
 
 	int width = 0;
 	int height = 0;
@@ -192,8 +181,8 @@ void UpdateStyleScale()
 	{
 		// Follow the window height in eighth steps so a window drag doesn't rebuild the
 		// style every pixel; the floor keeps small windows readable.
-		const float heightScale = SDL_floorf((height / kReferenceHeight) * 8.0f) / 8.0f;
-		scale *= SDL_max(heightScale, kMinHeightScale);
+		const float heightScale = 1.0f + (height / kReferenceHeight - 1.0f) * kHeightScaleRate;
+		scale = SDL_max(SDL_floorf(heightScale * 8.0f) / 8.0f, kMinHeightScale);
 	}
 
 	if (scale != s_styleScale)
@@ -271,46 +260,237 @@ int DisplayRefreshRate()
 	return (int)(mode->refresh_rate + 0.5f);
 }
 
-void FrameRateLabel(char *label, size_t size, int rate)
+// Picture aspect the window size presets follow: the chosen ratio, or the
+// display's own shape when stretching.
+void PresetAspect(int *width, int *height)
 {
-	snprintf(label, size, rate == NATIVE_FRAME_RATE_ORIGINAL ? "%d (original)" : "%d", rate);
+	if (NativeSettings_AspectRatio(width, height))
+	{
+		return;
+	}
+
+	const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(s_window));
+	if ((mode != nullptr) && (mode->w > 0) && (mode->h > 0))
+	{
+		*width = mode->w;
+		*height = mode->h;
+		return;
+	}
+	*width = 16;
+	*height = 9;
 }
 
-bool FrameRateCombo(int *frameRate, float width)
+// Sliders and number fields apply live while edited and are saved once released.
+bool EditCommitted()
 {
-	bool changed = false;
-	char preview[32];
-	FrameRateLabel(preview, sizeof(preview), *frameRate);
+	return ImGui::IsItemDeactivatedAfterEdit();
+}
 
-	ImGui::SetNextItemWidth(width);
-	if (ImGui::BeginCombo("Frame rate", preview))
+bool DrawWindowSize(NativeVideoSettings &video, float comboWidth)
+{
+	const SDL_DisplayMode *display = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(s_window));
+
+	if (video.displayMode != NATIVE_DISPLAY_WINDOWED)
 	{
-		for (int rate : kFrameRates)
+		if (display != nullptr)
 		{
-			char label[32];
-			FrameRateLabel(label, sizeof(label), rate);
-			if (ImGui::Selectable(label, *frameRate == rate))
+			ImGui::TextDisabled("Fullscreen uses your desktop resolution (%d x %d).", display->w, display->h);
+		}
+		return false;
+	}
+
+	bool changed = false;
+	int currentWidth = 0;
+	int currentHeight = 0;
+	SDL_GetWindowSize(s_window, &currentWidth, &currentHeight);
+
+	int aspectW = 4;
+	int aspectH = 3;
+	PresetAspect(&aspectW, &aspectH);
+
+	// Only sizes that fit on the display the window is on.
+	const int maxWidth = (display != nullptr) ? display->w : 16384;
+	const int maxHeight = (display != nullptr) ? display->h : 16384;
+
+	char preview[32];
+	snprintf(preview, sizeof(preview), s_customWindowSize ? "Custom" : "%d x %d", currentWidth, currentHeight);
+
+	ImGui::SetNextItemWidth(comboWidth);
+	if (ImGui::BeginCombo("Window size", preview))
+	{
+		for (int presetHeight : kWindowHeights)
+		{
+			// Even widths keep the picture centred on a whole pixel.
+			const int presetWidth = ((presetHeight * aspectW / aspectH) + 1) & ~1;
+			if ((presetWidth > maxWidth) || (presetHeight > maxHeight))
 			{
-				*frameRate = rate;
+				continue;
+			}
+
+			char label[32];
+			snprintf(label, sizeof(label), "%d x %d", presetWidth, presetHeight);
+			const bool selected = !s_customWindowSize && (presetWidth == currentWidth) && (presetHeight == currentHeight);
+			if (ImGui::Selectable(label, selected))
+			{
+				s_customWindowSize = false;
+				video.windowWidth = presetWidth;
+				video.windowHeight = presetHeight;
 				changed = true;
 			}
 		}
 
-		const int display = DisplayRefreshRate();
-		if ((display > NATIVE_FRAME_RATE_ORIGINAL) && (display <= NATIVE_FRAME_RATE_MAX))
+		if (ImGui::Selectable("Custom...", s_customWindowSize))
 		{
-			char label[48];
-			snprintf(label, sizeof(label), "Match display (%d)", display);
-			if (ImGui::Selectable(label, false))
-			{
-				*frameRate = display;
-				changed = true;
-			}
+			s_customWindowSize = true;
+			s_customWindowWidth = currentWidth;
+			s_customWindowHeight = currentHeight;
 		}
 		ImGui::EndCombo();
 	}
-	HelpTooltip("Above 30, extra frames are drawn between the game's 30 updates per second by blending the camera, karts "
-	            "and objects. Gameplay, physics, ghosts and replays are unchanged. Menus and loading screens stay at 30.");
+	HelpTooltip("Sizes follow the aspect ratio below, so the picture fills the window without black bars. "
+	            "You can also drag the window edges to any size.");
+
+	if (s_customWindowSize)
+	{
+		const float fieldWidth = ImGui::GetFontSize() * 5.0f;
+		ImGui::Indent();
+		ImGui::SetNextItemWidth(fieldWidth);
+		ImGui::InputInt("##windowWidth", &s_customWindowWidth, 0, 0);
+		ImGui::SameLine();
+		ImGui::TextUnformatted("x");
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(fieldWidth);
+		ImGui::InputInt("##windowHeight", &s_customWindowHeight, 0, 0);
+		ImGui::SameLine();
+		if (ImGui::Button("Apply"))
+		{
+			video.windowWidth = SDL_clamp(s_customWindowWidth, 320, maxWidth);
+			video.windowHeight = SDL_clamp(s_customWindowHeight, 240, maxHeight);
+			s_customWindowWidth = video.windowWidth;
+			s_customWindowHeight = video.windowHeight;
+			changed = true;
+		}
+		ImGui::Unindent();
+	}
+	return changed;
+}
+
+bool DrawFrameRate(NativeVideoSettings &video, float comboWidth)
+{
+	bool changed = false;
+
+	ImGui::BeginDisabled(video.frameRateMatchDisplay != 0);
+	int rate = video.frameRateMatchDisplay ? Platform_GetTargetFrameRate() : video.frameRate;
+	ImGui::SetNextItemWidth(comboWidth);
+	if (ImGui::SliderInt("Frame rate", &rate, NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX,
+	                     rate == NATIVE_FRAME_RATE_ORIGINAL ? "%d fps (original)" : "%d fps", ImGuiSliderFlags_AlwaysClamp))
+	{
+		video.frameRate = rate;
+	}
+	changed |= EditCommitted();
+	ImGui::EndDisabled();
+	ImGui::SetItemTooltip("The game always runs at 30 updates per second. Above 30, extra frames are drawn in between by blending the "
+	                      "camera, karts and objects; gameplay, physics, ghosts and replays are unchanged. Below 30, some frames are "
+	                      "not shown. Menus and loading screens stay at 30. Ctrl+click to type a value.");
+
+	const int display = DisplayRefreshRate();
+	char label[48];
+	snprintf(label, sizeof(label), display > 0 ? "Match display (%d Hz)" : "Match display", display);
+	ImGui::Indent();
+	changed |= CheckboxInt(label, &video.frameRateMatchDisplay);
+	ImGui::Unindent();
+	HelpTooltip("Follow the refresh rate of the display the window is on, instead of the slider.");
+	return changed;
+}
+
+bool DrawInternalResolution(NativeVideoSettings &video, float comboWidth)
+{
+	bool changed = false;
+
+	ImGui::BeginDisabled(video.renderScaleCustom != 0);
+	ImGui::SetNextItemWidth(comboWidth);
+	ImGui::SliderInt("Internal resolution", &video.renderScale, 1, NATIVE_RENDER_SCALE_MAX, video.renderScale <= 1 ? "1x (original)" : "%dx",
+	                 ImGuiSliderFlags_AlwaysClamp);
+	changed |= EditCommitted();
+	ImGui::EndDisabled();
+	ImGui::SetItemTooltip("Renders the game at a multiple of the original resolution for sharper edges. Above 1x the final image "
+	                      "also skips the PS1's 15-bit colour reduction. Screen effects (blur, heat haze) stay at 1x.");
+
+	ImGui::Indent();
+	changed |= CheckboxInt("Custom scale", &video.renderScaleCustom);
+	HelpTooltip("Any multiplier from 1x to 16x, including fractions such as 2.5x.");
+	if (video.renderScaleCustom)
+	{
+		ImGui::SameLine();
+		float scale = (float)video.renderScalePercent / 100.0f;
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
+		if (ImGui::InputFloat("##customScale", &scale, 0.25f, 1.0f, "%.2fx"))
+		{
+			const int percent = (int)(scale * 100.0f + 0.5f);
+			video.renderScalePercent = SDL_clamp(percent, NATIVE_RENDER_SCALE_PERCENT_MIN, NATIVE_RENDER_SCALE_PERCENT_MAX);
+			// The +/- buttons change the value without activating the field.
+			changed |= !ImGui::IsItemActive();
+		}
+		changed |= EditCommitted();
+	}
+
+	// 512 x 216 is the in-race display; menus use other PS1 display sizes.
+	const float multiplier = video.renderScaleCustom ? (float)video.renderScalePercent / 100.0f : (float)video.renderScale;
+	const float widen = (multiplier > 1.0f) ? 1.0f / NativeSettings_WideSqueeze() : 1.0f;
+	ImGui::TextDisabled("Races render at %d x %d.", (int)(512.0f * multiplier * widen + 0.5f), (int)(216.0f * multiplier + 0.5f));
+	ImGui::Unindent();
+	return changed;
+}
+
+bool DrawAspectRatio(NativeVideoSettings &video, float comboWidth)
+{
+	bool changed = false;
+
+	ImGui::SetNextItemWidth(comboWidth);
+	changed |= ImGui::Combo("Aspect ratio", &video.aspectMode, kAspectModeNames, NATIVE_ASPECT_COUNT);
+	HelpTooltip("Original keeps the 4:3 picture. Wider ratios show more of the world, with the HUD kept in its original "
+	            "proportions. Stretch fills the window and distorts the image.");
+
+	if (video.aspectMode != NATIVE_ASPECT_CUSTOM)
+	{
+		return changed;
+	}
+
+	const float fieldWidth = ImGui::GetFontSize() * 4.0f;
+	ImGui::Indent();
+	ImGui::SetNextItemWidth(fieldWidth);
+	ImGui::InputInt("##aspectWidth", &video.aspectCustomWidth, 0, 0);
+	changed |= EditCommitted();
+	ImGui::SameLine();
+	ImGui::TextUnformatted(":");
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(fieldWidth);
+	ImGui::InputInt("##aspectHeight", &video.aspectCustomHeight, 0, 0);
+	changed |= EditCommitted();
+	video.aspectCustomWidth = SDL_clamp(video.aspectCustomWidth, 1, NATIVE_ASPECT_CUSTOM_MAX_TERM);
+	video.aspectCustomHeight = SDL_clamp(video.aspectCustomHeight, 1, NATIVE_ASPECT_CUSTOM_MAX_TERM);
+
+	const SDL_DisplayMode *display = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(s_window));
+	if (display != nullptr)
+	{
+		ImGui::SameLine();
+		if (ImGui::Button("Use display"))
+		{
+			video.aspectCustomWidth = display->w;
+			video.aspectCustomHeight = display->h;
+			changed = true;
+		}
+		HelpTooltip("Match the shape of the display the window is on.");
+	}
+
+	int width = 0;
+	int height = 0;
+	NativeSettings_AspectRatio(&width, &height);
+	if ((width != video.aspectCustomWidth) || (height != video.aspectCustomHeight))
+	{
+		ImGui::TextDisabled("Using %d:%d. Ratios range from 4:3 to 32:9.", width, height);
+	}
+	ImGui::Unindent();
 	return changed;
 }
 
@@ -326,66 +506,19 @@ void DrawVideoTab()
 	changed |= ImGui::Combo("Display mode", &video.displayMode, kDisplayModeNames, NATIVE_DISPLAY_COUNT);
 	HelpTooltip("Fullscreen uses the desktop resolution (borderless). F11 or Alt+Enter also toggles it.");
 
-	int currentWidth = 0;
-	int currentHeight = 0;
-	SDL_GetWindowSize(s_window, &currentWidth, &currentHeight);
-	char sizePreview[32];
-	snprintf(sizePreview, sizeof(sizePreview), "%d x %d", currentWidth, currentHeight);
-
-	ImGui::BeginDisabled(video.displayMode != NATIVE_DISPLAY_WINDOWED);
-	ImGui::SetNextItemWidth(comboWidth);
-	if (ImGui::BeginCombo("Window size", sizePreview))
-	{
-		for (const WindowSizePreset &preset : kWindowSizes)
-		{
-			const bool selected = (preset.width == currentWidth) && (preset.height == currentHeight);
-			if (ImGui::Selectable(preset.label, selected))
-			{
-				video.windowWidth = preset.width;
-				video.windowHeight = preset.height;
-				changed = true;
-			}
-		}
-		ImGui::EndCombo();
-	}
-	ImGui::EndDisabled();
-	ImGui::SetItemTooltip(video.displayMode == NATIVE_DISPLAY_WINDOWED ? "You can also drag the window edges to any size." : "Switch to windowed mode to pick a window size.");
-
-	changed |= FrameRateCombo(&video.frameRate, comboWidth);
+	changed |= DrawWindowSize(video, comboWidth);
+	changed |= DrawFrameRate(video, comboWidth);
 
 	SectionHeading("Picture");
 
-	ImGui::SetNextItemWidth(comboWidth);
-	char scalePreview[32];
-	snprintf(scalePreview, sizeof(scalePreview), video.renderScale <= 1 ? "1x (original)" : "%dx", video.renderScale);
-	if (ImGui::BeginCombo("Internal resolution", scalePreview))
-	{
-		for (int scale = 1; scale <= NATIVE_RENDER_SCALE_MAX; scale++)
-		{
-			char label[48];
-			// 512 x 216 is the in-race display; menus use other PS1 display sizes.
-			snprintf(label, sizeof(label), scale == 1 ? "1x (original, 512 x 216)" : "%dx (%d x %d)", scale, 512 * scale, 216 * scale);
-			if (ImGui::Selectable(label, video.renderScale == scale))
-			{
-				video.renderScale = scale;
-				changed = true;
-			}
-		}
-		ImGui::EndCombo();
-	}
-	HelpTooltip("Renders the game at a multiple of the original resolution for sharper edges. "
-	            "Above 1x the final image also skips the PS1's 15-bit colour reduction. Screen effects (blur, heat haze) stay at 1x.");
+	changed |= DrawInternalResolution(video, comboWidth);
+	changed |= DrawAspectRatio(video, comboWidth);
 
-	ImGui::SetNextItemWidth(comboWidth);
-	changed |= ImGui::Combo("Aspect ratio", &video.aspectMode, kAspectModeNames, NATIVE_ASPECT_COUNT);
-	HelpTooltip("Original keeps the 4:3 picture. Widescreen shows more of the world at 16:9, with the HUD kept in its original "
-	            "proportions in the centre 4:3 area. Stretch fills the window and distorts the image.");
-
-	ImGui::BeginDisabled(video.aspectMode != NATIVE_ASPECT_WIDESCREEN);
+	ImGui::BeginDisabled(!NativeSettings_WidescreenActive());
 	ImGui::SetNextItemWidth(comboWidth);
 	changed |= ImGui::Combo("HUD position", &video.hudPosition, kHudPositionNames, NATIVE_HUD_POSITION_COUNT);
 	ImGui::EndDisabled();
-	ImGui::SetItemTooltip("Widescreen only. Screen edges moves the race HUD out to the corners; centre keeps the original 4:3 layout. "
+	ImGui::SetItemTooltip("Wide ratios only. Screen edges moves the race HUD out to the corners; centre keeps the original 4:3 layout. "
 	                      "Menus always stay centred.");
 
 	ImGui::BeginDisabled(video.aspectMode == NATIVE_ASPECT_STRETCH);
@@ -413,6 +546,7 @@ void DrawVideoTab()
 		video = defaults.video;
 		video.windowWidth = keepWidth;
 		video.windowHeight = keepHeight;
+		s_customWindowSize = false;
 		changed = true;
 	}
 	HelpTooltip("Restores every video option except the window size.");
@@ -1043,12 +1177,9 @@ void DrawFpsOverlay()
 	                               ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove;
 	if (ImGui::Begin("##fps", nullptr, flags))
 	{
-		const float fps = io.Framerate;
 		ImGui::PushStyleColor(ImGuiCol_Text, Color(kYellow));
-		ImGui::Text("%.1f FPS", fps);
+		ImGui::Text("%.1f FPS", io.Framerate);
 		ImGui::PopStyleColor();
-		ImGui::SameLine();
-		ImGui::TextDisabled("%.1f ms", fps > 0.0f ? 1000.0f / fps : 0.0f);
 	}
 	ImGui::End();
 	ImGui::PopStyleVar(2);

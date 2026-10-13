@@ -117,11 +117,11 @@ global_variable struct NativeRenderTarget s_presentRenderTarget;
 global_variable b32 s_presentRenderTargetReady;
 
 // Internal resolution: the main render target is the display size times this
-// factor, latched once per frame in BeginScene. Offscreen (render-to-VRAM)
-// targets and VRAM itself always stay at the original resolution.
-global_variable s32 s_renderScale = 1;
-// Horizontal pixels per VRAM pixel in the main target. Widescreen widens the
-// target by 4/3 above 1x so the stretched 16:9 image keeps square pixels.
+// factor (whole or fractional), latched once per frame in BeginScene. Offscreen
+// (render-to-VRAM) targets and VRAM itself always stay at the original resolution.
+global_variable f32 s_renderScaleY = 1.0f;
+// Horizontal pixels per VRAM pixel in the main target. Widescreen widens the target
+// above 1x by aspect / (4/3) (4/3 at 16:9) so the stretched image keeps square pixels.
 global_variable f32 s_renderScaleX = 1.0f;
 global_variable s32 s_maxRenderTargetSize = 4096;
 
@@ -173,7 +173,7 @@ internal void NativeRenderer_InitRenderTarget(struct NativeRenderTarget *target)
 internal void NativeRenderer_DestroyRenderTarget(struct NativeRenderTarget *target);
 internal void NativeRenderer_EnsureRenderTarget(struct NativeRenderTarget *target, int width, int height);
 internal void NativeRenderer_BindMainRenderTarget(void);
-internal s32 NativeRenderer_ChooseRenderScale(void);
+internal f32 NativeRenderer_ChooseRenderScale(void);
 internal void NativeRenderer_DrawVRAMRegion(int x, int y, int width, int height);
 internal void NativeRenderer_LoadRenderTargetFromVRAM(struct NativeRenderTarget *target, int x, int y);
 #if defined(CTR_INTERNAL)
@@ -372,11 +372,11 @@ void NativeRenderer_BeginScene(void)
 
 	NativePerf_BeginScope(NATIVE_PERF_BUCKET_RENDERER_BEGIN_SCENE);
 	s_lastBoundTexture = 0;
-	s_renderScale = NativeRenderer_ChooseRenderScale();
-	s_renderScaleX = (f32)s_renderScale;
-	if ((s_renderScale > 1) && NativeSettings_WidescreenActive())
+	s_renderScaleY = NativeRenderer_ChooseRenderScale();
+	s_renderScaleX = s_renderScaleY;
+	if ((s_renderScaleY > 1.0f) && NativeSettings_WidescreenActive())
 	{
-		s_renderScaleX = (f32)s_renderScale * 4.0f / 3.0f;
+		s_renderScaleX = s_renderScaleY / NativeSettings_WideSqueeze();
 	}
 
 	NativeRenderer_UpdatePresentationViewport();
@@ -500,8 +500,12 @@ internal void NativeRenderer_UpdatePresentationViewport(void)
 		return;
 	}
 
-	const int aspectW = (video->aspectMode == NATIVE_ASPECT_WIDESCREEN) ? 16 : s_presentAspectW;
-	const int aspectH = (video->aspectMode == NATIVE_ASPECT_WIDESCREEN) ? 9 : s_presentAspectH;
+	int aspectW = s_presentAspectW;
+	int aspectH = s_presentAspectH;
+	if (NativeSettings_WidescreenActive())
+	{
+		NativeSettings_AspectRatio(&aspectW, &aspectH);
+	}
 
 	int viewportW = g_windowWidth;
 	int viewportH = (viewportW * aspectH) / aspectW;
@@ -571,7 +575,7 @@ internal void NativeRenderer_DestroyRenderTarget(struct NativeRenderTarget *targ
 	target->texture = (TextureID)-1;
 }
 
-internal void NativeRenderer_EnsureRenderTargetScaled(struct NativeRenderTarget *target, int sourceWidth, int sourceHeight, f32 scaleX, int scaleY)
+internal void NativeRenderer_EnsureRenderTargetScaled(struct NativeRenderTarget *target, int sourceWidth, int sourceHeight, f32 scaleX, f32 scaleY)
 {
 	if (sourceWidth < 1)
 	{
@@ -583,7 +587,7 @@ internal void NativeRenderer_EnsureRenderTargetScaled(struct NativeRenderTarget 
 	}
 
 	const int width = (int)((f32)sourceWidth * scaleX + 0.5f);
-	const int height = sourceHeight * scaleY;
+	const int height = (int)((f32)sourceHeight * scaleY + 0.5f);
 	target->sourceWidth = sourceWidth;
 	target->sourceHeight = sourceHeight;
 
@@ -607,24 +611,26 @@ internal void NativeRenderer_EnsureRenderTargetScaled(struct NativeRenderTarget 
 
 internal void NativeRenderer_EnsureRenderTarget(struct NativeRenderTarget *target, int width, int height)
 {
-	NativeRenderer_EnsureRenderTargetScaled(target, width, height, 1.0f, 1);
+	NativeRenderer_EnsureRenderTargetScaled(target, width, height, 1.0f, 1.0f);
 }
 
-internal s32 NativeRenderer_ChooseRenderScale(void)
+internal f32 NativeRenderer_ChooseRenderScale(void)
 {
-	s32 scale = g_settings.video.renderScale;
-	if (scale < 1)
+	const struct NativeVideoSettings *video = &g_settings.video;
+	f32 scale = video->renderScaleCustom ? (f32)video->renderScalePercent / 100.0f : (f32)video->renderScale;
+	const f32 maxScale = video->renderScaleCustom ? (f32)NATIVE_RENDER_SCALE_PERCENT_MAX / 100.0f : (f32)NATIVE_RENDER_SCALE_MAX;
+	scale = SDL_clamp(scale, 1.0f, maxScale);
+
+	// The widest PS1 display mode is 640 pixels, widened further in widescreen;
+	// stay inside the driver's limits.
+	const f32 widest = 640.0f / NativeSettings_WideSqueeze();
+	if (widest * scale > (f32)s_maxRenderTargetSize)
 	{
-		scale = 1;
-	}
-	if (scale > NATIVE_RENDER_SCALE_MAX)
-	{
-		scale = NATIVE_RENDER_SCALE_MAX;
-	}
-	// The widest PS1 display mode is 640 pixels; stay inside the driver's limits.
-	while ((scale > 1) && (640 * scale > s_maxRenderTargetSize))
-	{
-		scale--;
+		scale = SDL_max(1.0f, (f32)s_maxRenderTargetSize / widest);
+		if (!video->renderScaleCustom)
+		{
+			scale = SDL_floorf(scale);
+		}
 	}
 	return scale;
 }
@@ -639,7 +645,7 @@ internal void NativeRenderer_BindMainRenderTarget(void)
 		height = activeDrawEnv.clip.h;
 	}
 
-	NativeRenderer_EnsureRenderTargetScaled(&s_mainRenderTarget, width, height, s_renderScaleX, s_renderScale);
+	NativeRenderer_EnsureRenderTargetScaled(&s_mainRenderTarget, width, height, s_renderScaleX, s_renderScaleY);
 	glBindFramebuffer(GL_FRAMEBUFFER, s_mainRenderTarget.framebuffer);
 }
 
@@ -1411,7 +1417,7 @@ void NativeRenderer_SetupClipMode(const RECT16 *rect, const DISPENV *displayEnv,
 	const float viewportX = 0.0f;
 	const float viewportY = 0.0f;
 	const float viewportW = (float)displayEnv->disp.w * s_renderScaleX;
-	const float viewportH = (float)(displayEnv->disp.h * s_renderScale);
+	const float viewportH = (float)displayEnv->disp.h * s_renderScaleY;
 	const float flipOffset = viewportY + viewportH - clipRectH * viewportH;
 	const float crx = viewportX + clipRectX * viewportW;
 	const float cry = clipRectY * viewportH;
@@ -2237,7 +2243,7 @@ void NativeRenderer_PresentVRAMRect(int displayX, int displayY, int displayW, in
 // resolutions it blits the high-res main render target straight to the window.
 void NativeRenderer_PresentFrame(int displayX, int displayY, int displayW, int displayH)
 {
-	if ((s_renderScale <= 1) || (s_mainRenderTarget.sourceWidth != displayW) || (s_mainRenderTarget.sourceHeight != displayH))
+	if ((s_renderScaleY <= 1.0f) || (s_mainRenderTarget.sourceWidth != displayW) || (s_mainRenderTarget.sourceHeight != displayH))
 	{
 		NativeRenderer_PresentVRAMRect(displayX, displayY, displayW, displayH);
 		return;

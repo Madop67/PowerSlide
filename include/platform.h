@@ -30,6 +30,9 @@ void Platform_WaitUntilVBlank(int targetVBlank);
 unsigned long long Platform_GetVBlankTime(int vblankIndex);
 // Sleeps until the performance counter reaches `target`, emitting VBlanks as they fall due.
 void Platform_WaitUntilTime(unsigned long long target);
+// Frames per second to show: video.frame_rate, or the display's refresh rate when
+// video.frame_rate_match_display is set. The game logic always ticks at 30.
+int Platform_GetTargetFrameRate(void);
 void Platform_PollHostEvents(void);
 int Platform_PollInput(void);
 

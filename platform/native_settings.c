@@ -47,7 +47,7 @@ struct NativeSettingDesc
 };
 
 global_variable const char *const s_displayModeNames[NATIVE_DISPLAY_COUNT] = {"windowed", "fullscreen"};
-global_variable const char *const s_aspectModeNames[NATIVE_ASPECT_COUNT] = {"original", "widescreen", "stretch"};
+global_variable const char *const s_aspectModeNames[NATIVE_ASPECT_COUNT] = {"original", "widescreen", "ultrawide", "custom", "stretch"};
 global_variable const char *const s_scaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"sharp", "smooth"};
 global_variable const char *const s_hudPositionNames[NATIVE_HUD_POSITION_COUNT] = {"edges", "centre"};
 
@@ -69,12 +69,17 @@ global_variable const struct NativeSettingDesc s_fixedDescs[] = {
 	{"video", "window_width", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(windowWidth), 0, 16384, NULL},
 	{"video", "window_height", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(windowHeight), 0, 16384, NULL},
 	{"video", "aspect_ratio", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(aspectMode), 0, NATIVE_ASPECT_COUNT - 1, s_aspectModeNames},
+	{"video", "aspect_custom_width", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(aspectCustomWidth), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL},
+	{"video", "aspect_custom_height", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(aspectCustomHeight), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL},
 	{"video", "hud_position", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(hudPosition), 0, NATIVE_HUD_POSITION_COUNT - 1, s_hudPositionNames},
 	{"video", "render_scale", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(renderScale), 1, NATIVE_RENDER_SCALE_MAX, NULL},
+	{"video", "render_scale_custom", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(renderScaleCustom), 0, 1, NULL},
+	{"video", "render_scale_percent", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(renderScalePercent), NATIVE_RENDER_SCALE_PERCENT_MIN, NATIVE_RENDER_SCALE_PERCENT_MAX, NULL},
 	{"video", "integer_scaling", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(integerScaling), 0, 1, NULL},
 	{"video", "scale_filter", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(scaleFilter), 0, NATIVE_SCALE_FILTER_COUNT - 1, s_scaleFilterNames},
 	{"video", "texture_filtering", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(textureFiltering), 0, 1, NULL},
-	{"video", "frame_rate", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(frameRate), NATIVE_FRAME_RATE_ORIGINAL, NATIVE_FRAME_RATE_MAX, NULL},
+	{"video", "frame_rate", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(frameRate), NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX, NULL},
+	{"video", "frame_rate_match_display", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(frameRateMatchDisplay), 0, 1, NULL},
 	{"video", "show_fps", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(showFps), 0, 1, NULL},
 };
 
@@ -211,7 +216,10 @@ void NativeSettings_SetDefaults(struct NativeSettings *settings)
 	memset(settings, 0, sizeof(*settings));
 	settings->video.displayMode = NATIVE_DISPLAY_WINDOWED;
 	settings->video.aspectMode = NATIVE_ASPECT_ORIGINAL;
+	settings->video.aspectCustomWidth = 16;
+	settings->video.aspectCustomHeight = 10;
 	settings->video.renderScale = 1;
+	settings->video.renderScalePercent = 150;
 	settings->video.frameRate = NATIVE_FRAME_RATE_ORIGINAL;
 	settings->video.scaleFilter = NATIVE_SCALE_FILTER_SHARP;
 	NativeSettings_SetInputDefaults(&settings->input);
