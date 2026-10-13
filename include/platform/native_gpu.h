@@ -23,4 +23,9 @@ int NativeGpu_GetStateSize(void);
 int NativeGpu_CaptureState(void *dst, int dstSize);
 int NativeGpu_RestoreState(const void *src, int srcSize);
 
+// Widescreen HUD: registers the ordering table of swapchain buffer `bufferIndex`
+// (otBytes long) and the slot in it that the HUD links into. Primitives reached
+// through that slot are drawn squeezed to 3/4 width around the screen centre.
+void NativeGpu_SetHudOT(int bufferIndex, const void *otBase, int otBytes, const void *hudSlot);
+
 #endif

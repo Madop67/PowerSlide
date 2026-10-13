@@ -294,8 +294,8 @@ void DrawVideoTab()
 
 	ImGui::SetNextItemWidth(comboWidth);
 	changed |= ImGui::Combo("Aspect ratio", &video.aspectMode, kAspectModeNames, NATIVE_ASPECT_COUNT);
-	HelpTooltip("Original keeps the 4:3 picture. Widescreen shows more of the world at 16:9 (HUD adjustments are still in progress). "
-	            "Stretch fills the window and distorts the image.");
+	HelpTooltip("Original keeps the 4:3 picture. Widescreen shows more of the world at 16:9, with the HUD kept in its original "
+	            "proportions in the centre 4:3 area. Stretch fills the window and distorts the image.");
 
 	ImGui::BeginDisabled(video.aspectMode == NATIVE_ASPECT_STRETCH);
 	changed |= CheckboxInt("Integer scaling", &video.integerScaling);

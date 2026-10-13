@@ -406,7 +406,8 @@ void PushBuffer_SetMatrixVP(struct PushBuffer *pb)
 #ifdef CTR_NATIVE
 	// Widescreen (after CTR-ModSDK USE_16BY9): the 4:3 frame is shown stretched to
 	// 16:9, so compress X by (9/16)/(3/4) = 0.75 to keep geometry in proportion.
-	if (NativeSettings_WidescreenActive())
+	// The HUD camera is skipped: the GPU layer squeezes the whole HUD at draw time.
+	if (NativeSettings_WidescreenActive() && (pb != &GAME_TRACKER->pushBuffer_UI))
 	{
 		pb->matrix_ViewProj.t[0] = pb->matrix_ViewProj.t[0] * 750 / 1000;
 		pb->matrix_ViewProj.m[0][0] = pb->matrix_ViewProj.m[0][0] * 750 / 1000;

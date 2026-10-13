@@ -14,6 +14,7 @@
 #include "platform/native_log.h"
 #include "platform/native_perf.h"
 #include "platform/native_renderer.h"
+#include "platform/native_settings.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -241,6 +242,87 @@ void DrawEnvOffset(float *ofsX, float *ofsY)
 	}
 }
 
+//------------------------------------------------------------------------------------------------------------------------
+// Widescreen HUD. In widescreen the whole 4:3 frame is shown stretched to 16:9 and
+// the 3D projection is pre-compressed to match (PushBuffer_SetMatrixVP). The HUD is
+// not projected, so its primitives are compressed here instead, at draw time, which
+// leaves game memory (and savestates/replays) untouched.
+
+#define NATIVE_HUD_OT_BUFFERS 2
+
+global_variable const u8 *s_hudOTBase[NATIVE_HUD_OT_BUFFERS];
+global_variable const u8 *s_hudOTEnd[NATIVE_HUD_OT_BUFFERS];
+global_variable const u8 *s_hudOTSlot[NATIVE_HUD_OT_BUFFERS];
+// Set while the OT walk is inside the HUD slot's primitive chain.
+global_variable b32 s_inHudOT;
+
+void NativeGpu_SetHudOT(int bufferIndex, const void *otBase, int otBytes, const void *hudSlot)
+{
+	if ((bufferIndex < 0) || (bufferIndex >= NATIVE_HUD_OT_BUFFERS))
+	{
+		return;
+	}
+	s_hudOTBase[bufferIndex] = (const u8 *)otBase;
+	s_hudOTEnd[bufferIndex] = (const u8 *)otBase + otBytes;
+	s_hudOTSlot[bufferIndex] = (const u8 *)hudSlot;
+}
+
+// Called for every zero-length packet in the walk: OT slots are the only
+// zero-length nodes, and each one starts the chain of a new slot.
+internal void NativeGpu_UpdateHudRegion(const u8 *packet)
+{
+	for (int i = 0; i < NATIVE_HUD_OT_BUFFERS; i++)
+	{
+		if ((s_hudOTSlot[i] != NULL) && (packet == s_hudOTSlot[i]))
+		{
+			s_inHudOT = true;
+			return;
+		}
+		if ((packet >= s_hudOTBase[i]) && (packet < s_hudOTEnd[i]))
+		{
+			s_inHudOT = false;
+			return;
+		}
+	}
+}
+
+internal b32 NativeGpu_HudSqueezeActive(void)
+{
+	return s_inHudOT && activeDrawEnv.dfe && NativeSettings_WidescreenActive();
+}
+
+internal s16 NativeGpu_SqueezeHudX(int x, int centerX)
+{
+	return (s16)(centerX + (int)SDL_floorf((f32)(x - centerX) * 0.75f + 0.5f));
+}
+
+// Compresses a primitive's vertices to 3/4 width around the screen centre.
+// Primitives spanning the full width (fades, backgrounds) keep covering it.
+internal void NativeGpu_SqueezeHudVertices(GrVertex *vertex, int count)
+{
+	int width;
+	int height;
+	DrawEnvDimensionsInt(&width, &height);
+
+	int minX = vertex[0].x;
+	int maxX = vertex[0].x;
+	for (int i = 1; i < count; i++)
+	{
+		minX = SDL_min(minX, vertex[i].x);
+		maxX = SDL_max(maxX, vertex[i].x);
+	}
+	if ((minX <= 0) && (maxX >= width))
+	{
+		return;
+	}
+
+	const int centerX = width / 2;
+	for (int i = 0; i < count; i++)
+	{
+		vertex[i].x = NativeGpu_SqueezeHudX(vertex[i].x, centerX);
+	}
+}
+
 void LineSwapSourceVerts(VERTTYPE **p0, VERTTYPE **p1, u8 **c0, u8 **c1)
 {
 	// swap line coordinates for left-to-right and up-to-bottom direction
@@ -266,12 +348,27 @@ void MakeLineArray(GrVertex *vertex, VERTTYPE *p0, VERTTYPE *p1)
 
 	memset(vertex, 0, sizeof(GrVertex) * 4);
 
+	// Widescreen HUD squeezes the endpoints but keeps the 1-pixel thickness.
+	int x0 = (int)(p0[0] + ofsX);
+	int x1 = (int)(p1[0] + ofsX);
+	if (NativeGpu_HudSqueezeActive())
+	{
+		int width;
+		int height;
+		DrawEnvDimensionsInt(&width, &height);
+		if (!((SDL_min(x0, x1) <= 0) && (SDL_max(x0, x1) >= width - 1)))
+		{
+			x0 = NativeGpu_SqueezeHudX(x0, width / 2);
+			x1 = NativeGpu_SqueezeHudX(x1, width / 2);
+		}
+	}
+
 	if (dx > abs((s16)dy))
 	{ // horizontal
-		vertex[0].x = p0[0] + ofsX;
+		vertex[0].x = x0;
 		vertex[0].y = p0[1] + ofsY;
 
-		vertex[1].x = p1[0] + ofsX + 1;
+		vertex[1].x = x1 + 1;
 		vertex[1].y = p1[1] + ofsY;
 
 		vertex[2].x = vertex[1].x;
@@ -282,10 +379,10 @@ void MakeLineArray(GrVertex *vertex, VERTTYPE *p0, VERTTYPE *p1)
 	}
 	else
 	{ // vertical
-		vertex[0].x = p0[0] + ofsX;
+		vertex[0].x = x0;
 		vertex[0].y = p0[1] + ofsY;
 
-		vertex[1].x = p1[0] + ofsX;
+		vertex[1].x = x1;
 		vertex[1].y = p1[1] + ofsY + 1;
 
 		vertex[2].x = vertex[1].x + 1;
@@ -315,6 +412,11 @@ void MakeVertexTriangle(GrVertex *vertex, VERTTYPE *p0, VERTTYPE *p1, VERTTYPE *
 
 	vertex[2].x = p2[0] + ofsX;
 	vertex[2].y = p2[1] + ofsY;
+
+	if (NativeGpu_HudSqueezeActive())
+	{
+		NativeGpu_SqueezeHudVertices(vertex, 3);
+	}
 }
 
 void MakeVertexQuad(GrVertex *vertex, VERTTYPE *p0, VERTTYPE *p1, VERTTYPE *p2, VERTTYPE *p3)
@@ -340,6 +442,11 @@ void MakeVertexQuad(GrVertex *vertex, VERTTYPE *p0, VERTTYPE *p1, VERTTYPE *p2, 
 
 	vertex[3].x = p3[0] + ofsX;
 	vertex[3].y = p3[1] + ofsY;
+
+	if (NativeGpu_HudSqueezeActive())
+	{
+		NativeGpu_SqueezeHudVertices(vertex, 4);
+	}
 }
 
 void MakeVertexRect(GrVertex *vertex, VERTTYPE *p0, s16 w, s16 h)
@@ -362,6 +469,11 @@ void MakeVertexRect(GrVertex *vertex, VERTTYPE *p0, s16 w, s16 h)
 
 	vertex[3].x = vertex[0].x + w;
 	vertex[3].y = vertex[0].y;
+
+	if (NativeGpu_HudSqueezeActive())
+	{
+		NativeGpu_SqueezeHudVertices(vertex, 4);
+	}
 }
 
 void MakeTexcoordQuad(GrVertex *vertex, u8 *uv0, u8 *uv1, u8 *uv2, u8 *uv3, s16 page, s16 clut, u8 dither)
@@ -1094,6 +1206,7 @@ void ParsePrimitivesLinkedList(u32 *p, int singlePrimitive)
 
 	// setup single primitive flag (needed for AddSplits)
 	s_gpu.drawPrimMode = singlePrimitive;
+	s_inHudOT = false;
 
 	if (singlePrimitive)
 	{
@@ -1110,6 +1223,10 @@ void ParsePrimitivesLinkedList(u32 *p, int singlePrimitive)
 		while (true)
 		{
 			const int tagLength = getlen(basePacket);
+			if (tagLength == 0)
+			{
+				NativeGpu_UpdateHudRegion(basePacket);
+			}
 			if (tagLength > 0)
 			{
 				if (tagLength > 32)

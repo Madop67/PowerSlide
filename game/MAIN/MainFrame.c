@@ -1,6 +1,8 @@
 #include <common.h>
 
 #if defined(CTR_NATIVE)
+#include <platform/native_gpu.h>
+
 static void MainFrame_RegisterGpuLinkRanges(struct GameTracker *gGT)
 {
 	static const char *const primLabels[2] = {"db0 prim", "db1 prim"};
@@ -96,6 +98,9 @@ void MainFrame_ResetDB(struct GameTracker *gGT)
 	db->otMem.uiOT = puVar3;
 
 #if defined(CTR_NATIVE)
+	// Widescreen HUD: tell the GPU layer which OT slot holds this frame's HUD.
+	NativeGpu_SetHudOT(gGT->swapchainIndex, (void *)otSwapchainDB, (int)(((u32)gGT->numPlyrCurrGame << 12) | 0x18u), puVar3);
+
 	if (sdata->ptrPushBufferUI != 0)
 	{
 		struct PushBuffer *wumpaPushBuffer = (struct PushBuffer *)(u32)sdata->ptrPushBufferUI;
