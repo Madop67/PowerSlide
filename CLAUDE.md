@@ -27,6 +27,11 @@ PowerSlide is a feature-rich native PC port of Crash Team Racing (PS1, NTSC-U), 
   - `./match.sh check` runs the byte-matching pipeline; it needs Linux.
   - The WSL checkout syncs from the Windows one via `git fetch /mnt/c/Workspaces/ctr-decomp/ctr-native <branch>`.
   - Passwordless `sudo apt-get` is allowed (`/etc/sudoers.d/claude-apt`).
+- **macOS checkout:** `~/workspace/ctr-decomp/ctr-native` (Apple Silicon).
+  - `./build-macos.sh` fetches the pinned wasi-sdk/WABT (`tools/macos/fetch-toolchain.sh`), builds `build-macos/ctr_native` and runs ctest.
+  - The game and the ImGui menu compile to wasm32, go through wasm2c, and link with a native host (`platform/wasm_host/`). See `cmake/ctr_wasm_sandbox.cmake`.
+  - A new GL call needs `python3 tools/macos/gen_wasm_gl_bridge.py`. A new SDL call needs an entry in `platform/wasm/imports.syms` and a shim in `platform/wasm_host/host_sdl.c`; the guest link fails with `undefined symbol` until both exist. SDL events with pointer members must be translated, not memcpy'd (see `HostSDL_TranslateTextInput`).
+  - `./match.sh check` does not run on macOS; use WSL/Linux.
 - **Disc and references:**
   - `assets/ctr-u.bin` is the user's NTSC-U disc (SHA256 `f780bf23…`).
   - `python3 tools/matching/extract_references.py` extracts `SCUS_944.26` and overlays 221–233 from it.
@@ -51,6 +56,7 @@ PowerSlide is a feature-rich native PC port of Crash Team Racing (PS1, NTSC-U), 
 | Video | Widescreen HUD: the GPU layer squeezes HUD OT slots and menu sub-viewports to 3/4 width at draw time. The race HUD moves to the screen edges via primitive-memory anchor ranges | `platform/native_gpu.c`, `game/MAIN/MainFrame.c`, `game/MAIN/MainFrame_RenderFrame.c` |
 | Branding | "PowerSlide" in the window title, `--version`, menu and README | `include/platform/native_product.h` |
 | Input | Input tab: rebind every PS1 button (2 keys and 1 controller input each; click, then press; Esc cancels, Backspace clears); keyboard player; per-player controller assignment; stick deadzone; analog press point; rumble on/off and strength. Saved under `[input]` by key and controller names. The Home/PS button or L3+R3 opens the menu. Bindings are table-driven; defaults equal the old hard-coded layout | `platform/native_input.c`, `platform/native_ui.cpp`, `include/platform/native_input_config.h` |
+| Build | macOS Apple Silicon build via a wasm32 sandbox (wasi-sdk → wasm2c → native arm64), including the ImGui settings menu | `cmake/ctr_wasm_sandbox.cmake`, `platform/wasm/`, `platform/wasm_host/`, `tools/macos/` |
 
 The debug wireframe toggle moved from F1 to Shift+F1. F2–F12 keep their upstream debug uses.
 

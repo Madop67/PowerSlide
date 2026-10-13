@@ -72,7 +72,7 @@ brew install cmake
 
 `build-macos.sh` downloads the pinned wasm toolchain (wasi-sdk 25, WABT 1.0.37) into `externals/.toolchains/` on first run.
 
-macOS cannot run 32-bit executables, and the game depends on 32-bit pointers (retail struct layouts and asset files patched with 4-byte pointers). The macOS build therefore compiles the game to wasm32, which is also a 32-bit-pointer target, translates it back to C with `wasm2c`, and links it into a native arm64 executable. A small host layer in `platform/wasm_host/` provides file I/O (WASI), SDL3 and OpenGL. See `cmake/ctr_wasm_sandbox.cmake` for details. If the renderer starts calling a new GL function, rerun `tools/macos/gen_wasm_gl_bridge.py`.
+macOS cannot run 32-bit executables, and the game depends on 32-bit pointers (retail struct layouts and asset files patched with 4-byte pointers). The macOS build therefore compiles the game to wasm32, which is also a 32-bit-pointer target, translates it back to C with `wasm2c`, and links it into a native arm64 executable. A small host layer in `platform/wasm_host/` provides file I/O (WASI), SDL3 and OpenGL. See `cmake/ctr_wasm_sandbox.cmake` for details. The in-game settings menu (Dear ImGui) is compiled into the wasm module too. If the renderer or the menu starts calling a new GL function, rerun `tools/macos/gen_wasm_gl_bridge.py`; a new SDL function goes in `platform/wasm/imports.syms` and `platform/wasm_host/host_sdl.c`.
 
 To get the disc image from a `.chd`: `brew install rom-tools`, then `chdman extractcd -i game.chd -o assets/ctr-u.cue -ob assets/ctr-u.bin`.
 
