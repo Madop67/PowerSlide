@@ -251,11 +251,19 @@ struct Model *MM_Characters_GetModelByName(const char *name)
 }
 void MM_Characters_DrawWindows(b32 showDrivers)
 {
+#ifdef CTR_NATIVE
+	// MSVC rejects nesting Instance (it ends in idpp[0]); point straight at the trailing per-player records.
+	struct InstanceWithIDPP
+	{
+		struct InstDrawPerPlayer idpp[4];
+	};
+#else
 	struct InstanceWithIDPP
 	{
 		struct Instance instance;
 		struct InstDrawPerPlayer idpp[4];
 	};
+#endif
 	register b32 boolShowDrivers CTR_PSX_REGISTER("$22");
 	register struct MetaDataCHAR *characterMetadata CTR_PSX_REGISTER("$23");
 	register s16 *desiredCharacterIDs CTR_PSX_REGISTER("$21");
@@ -439,7 +447,11 @@ LAB_Characters_DrawWindows_Loop:
 	}
 
 	indexOrSlideFactor = playerIndex;
+#ifdef CTR_NATIVE
+	driverWithIDPP = (struct InstanceWithIDPP *)driverInst->idpp;
+#else
 	driverWithIDPP = (struct InstanceWithIDPP *)driverInst;
+#endif
 
 	// clear pushBuffer in every InstDrawPerPlayer
 	driverWithIDPP->idpp[0].pushBuffer = 0;
