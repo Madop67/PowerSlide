@@ -86,6 +86,8 @@ struct NativeInterpRegion
 
 global_variable struct NativeInterpTick s_prevTick;
 global_variable b32 s_interpRenderPass;
+// Frames owed to the window, in thirtieths of a frame (see NativeInterp_RenderBetweenTicks).
+global_variable int s_frameCredit;
 global_variable u8 *s_interpSnapshot;
 global_variable u32 s_interpSnapshotSize;
 
@@ -258,7 +260,7 @@ void NativeInterp_EndTick(struct GameTracker *gGT)
 {
 	struct NativeInterpTick *tick = &s_prevTick;
 
-	tick->valid = (g_settings.video.frameRate > NATIVE_FRAME_RATE_ORIGINAL) && (gGT->level1 != NULL);
+	tick->valid = (Platform_GetTargetFrameRate() > NATIVE_FRAME_RATE_ORIGINAL) && (gGT->level1 != NULL);
 	if (!tick->valid)
 	{
 		return;
@@ -451,10 +453,11 @@ internal void NativeInterp_DrawFrame(struct GameTracker *gGT, struct GamepadSyst
 
 void NativeInterp_RenderBetweenTicks(struct GameTracker *gGT, struct GamepadSystem *gGamepads)
 {
-	const int frameRate = g_settings.video.frameRate;
+	const int frameRate = Platform_GetTargetFrameRate();
 
 	if ((frameRate <= NATIVE_FRAME_RATE_ORIGINAL) || !NativeInterp_CanBlend(gGT))
 	{
+		s_frameCredit = 0;
 		return;
 	}
 
@@ -469,10 +472,16 @@ void NativeInterp_RenderBetweenTicks(struct GameTracker *gGT, struct GamepadSyst
 	const u64 spanStart = Platform_GetVBlankTime(s_prevTick.presentVBlank);
 	const u64 spanEnd = Platform_GetVBlankTime(flipVBlank);
 	const u64 span = spanEnd - spanStart;
-	const u64 period = SDL_GetPerformanceFrequency() / (u64)frameRate;
 
-	// Frames per tick, rounded, so they are evenly spaced (2 at 60 fps).
-	int frames = (int)((span + period / 2) / period);
+	// Frames this tick, the real one included, evenly spaced within it. Rates that
+	// aren't a multiple of 30 carry the remainder to later ticks: 144 fps shows
+	// 5, 5, 5, 5, 4 frames per tick. Ticks longer than one 30 Hz period (lag,
+	// vsyncTillFlip > 2) get proportionally more.
+	const u64 tickPeriod = SDL_GetPerformanceFrequency() / NATIVE_FRAME_RATE_ORIGINAL;
+	const int ticks = SDL_max(1, (int)((span + tickPeriod / 2) / tickPeriod));
+	s_frameCredit += frameRate * ticks;
+	int frames = s_frameCredit / NATIVE_FRAME_RATE_ORIGINAL;
+	s_frameCredit -= frames * NATIVE_FRAME_RATE_ORIGINAL;
 	if (frames > NATIVE_INTERP_MAX_FRAMES)
 	{
 		frames = NATIVE_INTERP_MAX_FRAMES;

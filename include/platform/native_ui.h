@@ -31,6 +31,8 @@ int NativeUI_IsCapturingBinding(void);
 
 // Platform callback: shows the cursor while the menu is open, hides it in fullscreen otherwise.
 void Platform_UpdateCursorVisibility(void);
+// Frames per second shown (see platform.h).
+int Platform_GetTargetFrameRate(void);
 
 #ifdef __cplusplus
 }

@@ -245,7 +245,7 @@ void DrawEnvOffset(float *ofsX, float *ofsY)
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-// Widescreen layout. In widescreen the whole 4:3 frame is shown stretched to 16:9
+// Widescreen layout. In widescreen the whole 4:3 frame is shown stretched to the wide ratio
 // and full-screen 3D views are pre-compressed by the projection
 // (PushBuffer_SetMatrixVP). Everything else -- the HUD slots, and in menus the small
 // 3D preview windows -- is compressed here at draw time instead, which leaves game
@@ -265,6 +265,8 @@ struct NativeWideFrame
 	s32 anchorRegions;
 	const u8 *anchorStart[NATIVE_WIDE_ANCHOR_RANGES];
 	const u8 *anchorEnd[NATIVE_WIDE_ANCHOR_RANGES];
+	// Full-frame range (see NativeGpu_AddFullFrameRange) instead of race HUD.
+	b32 anchorFullFrame[NATIVE_WIDE_ANCHOR_RANGES];
 	s32 anchorCount;
 };
 
@@ -273,6 +275,8 @@ global_variable struct NativeWideFrame s_wide;
 global_variable b32 s_inHudOT;
 // Set while parsing a packet that lies in an anchor range (race HUD).
 global_variable b32 s_primAnchored;
+// Set while parsing a packet of a full-frame image in a HUD slot, which keeps its full width.
+global_variable b32 s_primFullFrame;
 
 void NativeGpu_SetWidescreenFrame(int bufferIndex, const void *otBase, int otBytes, const void *hudFirst, const void *hudEnd, int menuMode,
                                   int anchorRegions)
@@ -290,7 +294,7 @@ void NativeGpu_SetWidescreenFrame(int bufferIndex, const void *otBase, int otByt
 	s_wide.anchorCount = 0;
 }
 
-void NativeGpu_AddHudAnchorRange(const void *start, const void *end)
+internal void NativeGpu_AddRange(const void *start, const void *end, b32 fullFrame)
 {
 	if ((s_wide.anchorCount >= NATIVE_WIDE_ANCHOR_RANGES) || (start == NULL) || (end <= start))
 	{
@@ -298,7 +302,18 @@ void NativeGpu_AddHudAnchorRange(const void *start, const void *end)
 	}
 	s_wide.anchorStart[s_wide.anchorCount] = (const u8 *)start;
 	s_wide.anchorEnd[s_wide.anchorCount] = (const u8 *)end;
+	s_wide.anchorFullFrame[s_wide.anchorCount] = fullFrame;
 	s_wide.anchorCount++;
+}
+
+void NativeGpu_AddHudAnchorRange(const void *start, const void *end)
+{
+	NativeGpu_AddRange(start, end, false);
+}
+
+void NativeGpu_AddFullFrameRange(const void *start, const void *end)
+{
+	NativeGpu_AddRange(start, end, true);
 }
 
 int NativeGpu_GetHudAnchorCount(void)
@@ -333,16 +348,20 @@ internal void NativeGpu_UpdateHudRegion(const u8 *packet)
 	}
 }
 
-internal b32 NativeGpu_IsAnchoredPacket(const u8 *packet)
+// Finds the range holding packet: sets *anchored for race HUD, *fullFrame for a full-frame image.
+internal void NativeGpu_ClassifyPacket(const u8 *packet, b32 *anchored, b32 *fullFrame)
 {
+	*anchored = false;
+	*fullFrame = false;
 	for (int i = 0; i < s_wide.anchorCount; i++)
 	{
 		if ((packet >= s_wide.anchorStart[i]) && (packet < s_wide.anchorEnd[i]))
 		{
-			return true;
+			*fullFrame = s_wide.anchorFullFrame[i];
+			*anchored = !s_wide.anchorFullFrame[i];
+			return;
 		}
 	}
-	return false;
 }
 
 internal b32 NativeGpu_ClipIsSubViewport(const RECT16 *clip)
@@ -358,7 +377,7 @@ internal b32 NativeGpu_HudSqueezeActive(void)
 	}
 	if (s_inHudOT)
 	{
-		return true;
+		return !s_primFullFrame;
 	}
 	// Menu 3D preview windows skip the projection change and are squeezed with their frames.
 	return s_wide.menuMode && NativeGpu_ClipIsSubViewport(&activeDrawEnv.clip);
@@ -366,7 +385,7 @@ internal b32 NativeGpu_HudSqueezeActive(void)
 
 internal s16 NativeGpu_SqueezeHudX(int x, int centerX)
 {
-	return (s16)(centerX + (int)SDL_floorf((f32)(x - centerX) * 0.75f + 0.5f));
+	return (s16)(centerX + (int)SDL_floorf((f32)(x - centerX) * NativeSettings_WideSqueeze() + 0.5f));
 }
 
 // Picks the squeeze centre and edge-anchor shift for a primitive spanning
@@ -389,26 +408,28 @@ internal b32 NativeGpu_WideLayout(int minX, int maxX, int *centerX, int *shift)
 	if (s_inHudOT && s_primAnchored && (g_settings.video.hudPosition == NATIVE_HUD_POSITION_EDGES))
 	{
 		// Left and right thirds of the screen (or of each split-screen half) move out by
-		// the 1/8 of width that the squeeze took away; the middle stays centred.
+		// half the width the squeeze took away (1/8 at 16:9); the middle stays centred.
 		const int mid = (minX + maxX) / 2;
 		const int regionW = (s_wide.anchorRegions == 2) ? width / 2 : width;
 		const int regionX = ((s_wide.anchorRegions == 2) && (mid >= width / 2)) ? width / 2 : 0;
 		const int rel = mid - regionX;
 
+		const int edgeShift = (regionW * (1000 - NativeSettings_WideSqueeze1000())) / 2000;
+
 		*centerX = regionX + regionW / 2;
 		if (rel * 10 < regionW * 4)
 		{
-			*shift = -regionW / 8;
+			*shift = -edgeShift;
 		}
 		else if (rel * 10 > regionW * 6)
 		{
-			*shift = regionW / 8;
+			*shift = edgeShift;
 		}
 	}
 	return true;
 }
 
-// Compresses a primitive's vertices to 3/4 width (see NativeGpu_WideLayout).
+// Compresses a primitive's vertices by the wide squeeze (3/4 width at 16:9; see NativeGpu_WideLayout).
 internal void NativeGpu_SqueezeHudVertices(GrVertex *vertex, int count)
 {
 	int minX = vertex[0].x;
@@ -1336,6 +1357,7 @@ void ParsePrimitivesLinkedList(u32 *p, int singlePrimitive)
 	s_gpu.drawPrimMode = singlePrimitive;
 	s_inHudOT = false;
 	s_primAnchored = false;
+	s_primFullFrame = false;
 
 	if (singlePrimitive)
 	{
@@ -1371,7 +1393,12 @@ void ParsePrimitivesLinkedList(u32 *p, int singlePrimitive)
 
 				u8 *currentPacket = basePacket;
 				u8 *endPacket = basePacket + (tagLength + P_LEN) * sizeof(u32);
-				s_primAnchored = s_inHudOT && NativeGpu_IsAnchoredPacket(basePacket);
+				s_primAnchored = false;
+				s_primFullFrame = false;
+				if (s_inHudOT)
+				{
+					NativeGpu_ClassifyPacket(basePacket, &s_primAnchored, &s_primFullFrame);
+				}
 				int primLength = 0;
 				if (currentPacket < endPacket)
 				{

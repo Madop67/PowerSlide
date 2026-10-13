@@ -18,18 +18,31 @@ enum NativeDisplayMode
 enum NativeAspectMode
 {
 	NATIVE_ASPECT_ORIGINAL = 0,
-	// True 16:9: wider 3D view and culling, presented at 16:9 (see NativeSettings_WidescreenActive).
-	NATIVE_ASPECT_WIDESCREEN,
+	// Wide modes show more of the world: wider 3D view and culling, presented at the
+	// chosen ratio (see NativeSettings_WidescreenActive).
+	NATIVE_ASPECT_WIDESCREEN, // 16:9
+	NATIVE_ASPECT_ULTRAWIDE,  // 21:9
+	NATIVE_ASPECT_CUSTOM,     // aspectCustomWidth:aspectCustomHeight
 	NATIVE_ASPECT_STRETCH,
 	NATIVE_ASPECT_COUNT
 };
 
+// Custom aspect ratios are kept between 4:3 and 32:9.
+#define NATIVE_ASPECT_CUSTOM_MAX_TERM 16384
+
 #define NATIVE_RENDER_SCALE_MAX 8
+// Custom internal resolution, in percent of the original.
+#define NATIVE_RENDER_SCALE_PERCENT_MIN 100
+#define NATIVE_RENDER_SCALE_PERCENT_MAX 1600
 
 // Frames per second shown. The game always runs its logic at 30; above that,
-// in-between frames are interpolated (see native_interp.h).
+// in-between frames are interpolated (see native_interp.h), below it some frames
+// are not presented.
 #define NATIVE_FRAME_RATE_ORIGINAL 30
-#define NATIVE_FRAME_RATE_MAX      360
+#define NATIVE_FRAME_RATE_MIN      20
+#define NATIVE_FRAME_RATE_MAX      240
+// Highest refresh rate "match display" follows.
+#define NATIVE_FRAME_RATE_DISPLAY_MAX 360
 
 // Widescreen race HUD placement.
 enum NativeHudPosition
@@ -53,13 +66,20 @@ struct NativeVideoSettings
 	int windowWidth;
 	int windowHeight;
 	int aspectMode;
+	int aspectCustomWidth;
+	int aspectCustomHeight;
 	int hudPosition;
 	// Internal resolution multiplier for the main render target (1 = original).
 	int renderScale;
+	// When set, renderScalePercent (a fractional multiplier) replaces renderScale.
+	int renderScaleCustom;
+	int renderScalePercent;
 	int integerScaling;
 	int scaleFilter;
 	int textureFiltering;
 	int frameRate;
+	// Follow the display's refresh rate instead of frameRate.
+	int frameRateMatchDisplay;
 	int showFps;
 };
 
@@ -146,10 +166,74 @@ void Platform_ApplyVideoSettings(void);
 // Applies g_settings.input to the input layer.
 void Platform_ApplyInputSettings(void);
 
+// Picture aspect ratio of a fixed-ratio mode as width:height. Returns 0 for stretch.
+static inline int NativeSettings_AspectRatio(int *width, int *height)
+{
+	const struct NativeVideoSettings *video = &g_settings.video;
+	switch (video->aspectMode)
+	{
+	case NATIVE_ASPECT_WIDESCREEN:
+		*width = 16;
+		*height = 9;
+		return 1;
+	case NATIVE_ASPECT_ULTRAWIDE:
+		*width = 21;
+		*height = 9;
+		return 1;
+	case NATIVE_ASPECT_CUSTOM:
+		// Clamped to 4:3 .. 32:9.
+		*width = (video->aspectCustomWidth > 0) ? video->aspectCustomWidth : 16;
+		*height = (video->aspectCustomHeight > 0) ? video->aspectCustomHeight : 9;
+		if (*width * 3 < *height * 4)
+		{
+			*width = 4;
+			*height = 3;
+		}
+		else if (*width * 9 > *height * 32)
+		{
+			*width = 32;
+			*height = 9;
+		}
+		return 1;
+	case NATIVE_ASPECT_STRETCH:
+		return 0;
+	default:
+		*width = 4;
+		*height = 3;
+		return 1;
+	}
+}
+
 // Game code reads this (under CTR_NATIVE) to widen the 3D projection and culling.
 static inline int NativeSettings_WidescreenActive(void)
 {
-	return g_settings.video.aspectMode == NATIVE_ASPECT_WIDESCREEN;
+	int width;
+	int height;
+	return (g_settings.video.aspectMode != NATIVE_ASPECT_ORIGINAL) && NativeSettings_AspectRatio(&width, &height) && (width * 3 > height * 4);
+}
+
+// How much the 4:3 frame is compressed horizontally to show the wide view without
+// distortion, (4/3) / aspect, in thousandths: 750 at 16:9, 1000 when not wide.
+static inline int NativeSettings_WideSqueeze1000(void)
+{
+	int width;
+	int height;
+	if (!NativeSettings_WidescreenActive() || !NativeSettings_AspectRatio(&width, &height))
+	{
+		return 1000;
+	}
+	return (int)((4000LL * height + (3 * width) / 2) / (3LL * width));
+}
+
+static inline float NativeSettings_WideSqueeze(void)
+{
+	int width;
+	int height;
+	if (!NativeSettings_WidescreenActive() || !NativeSettings_AspectRatio(&width, &height))
+	{
+		return 1.0f;
+	}
+	return (4.0f * (float)height) / (3.0f * (float)width);
 }
 
 #ifdef __cplusplus

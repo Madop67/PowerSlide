@@ -405,16 +405,17 @@ void PushBuffer_SetMatrixVP(struct PushBuffer *pb)
 
 #ifdef CTR_NATIVE
 	// Widescreen (after CTR-ModSDK USE_16BY9): the 4:3 frame is shown stretched to
-	// 16:9, so compress X by (9/16)/(3/4) = 0.75 to keep geometry in proportion.
+	// the wide ratio, so compress X by (4/3)/aspect (0.75 at 16:9) to keep geometry in proportion.
 	// The HUD camera and menu preview windows (narrower than the screen) are skipped:
 	// the GPU layer squeezes those at draw time, together with the frames around them.
 	if (NativeSettings_WidescreenActive() && (pb != &GAME_TRACKER->pushBuffer_UI) &&
 	    !(((GAME_TRACKER->gameMode1 & MAIN_MENU) != 0) && (pb->rect.w < 0x200)))
 	{
-		pb->matrix_ViewProj.t[0] = pb->matrix_ViewProj.t[0] * 750 / 1000;
-		pb->matrix_ViewProj.m[0][0] = pb->matrix_ViewProj.m[0][0] * 750 / 1000;
-		pb->matrix_ViewProj.m[0][1] = pb->matrix_ViewProj.m[0][1] * 750 / 1000;
-		pb->matrix_ViewProj.m[0][2] = pb->matrix_ViewProj.m[0][2] * 750 / 1000;
+		const int squeeze = NativeSettings_WideSqueeze1000();
+		pb->matrix_ViewProj.t[0] = pb->matrix_ViewProj.t[0] * squeeze / 1000;
+		pb->matrix_ViewProj.m[0][0] = pb->matrix_ViewProj.m[0][0] * squeeze / 1000;
+		pb->matrix_ViewProj.m[0][1] = pb->matrix_ViewProj.m[0][1] * squeeze / 1000;
+		pb->matrix_ViewProj.m[0][2] = pb->matrix_ViewProj.m[0][2] * squeeze / 1000;
 	}
 #endif
 
@@ -601,10 +602,10 @@ void PushBuffer_UpdateFrustum(struct PushBuffer *pb)
 	val_X = pb->rect.w;
 	val_X = val_X / 2;
 #ifdef CTR_NATIVE
-	// Widescreen sees 4/3 more horizontally; widen the culling frustum to match.
+	// Widescreen sees more horizontally (4/3 more at 16:9); widen the culling frustum to match.
 	if (NativeSettings_WidescreenActive())
 	{
-		val_X = (val_X * 1000) / 750;
+		val_X = (val_X * 1000) / NativeSettings_WideSqueeze1000();
 	}
 #endif
 
@@ -650,12 +651,14 @@ void PushBuffer_UpdateFrustum(struct PushBuffer *pb)
 		posY = ty * 0x100 + cameraPosY;
 		posZ = tz * 0x100 + cameraPosZ;
 #ifdef CTR_NATIVE
-		// A wider frustum's corner rays reach less far forward; ModSDK found 2x restores the depth.
+		// A wider frustum's corner rays reach less far forward; ModSDK found 2x restores the
+		// depth at 16:9. Wider ratios scale that up with the width (2x * 16:9 widening).
 		if (NativeSettings_WidescreenActive())
 		{
-			posX = tx * 0x200 + cameraPosX;
-			posY = ty * 0x200 + cameraPosY;
-			posZ = tz * 0x200 + cameraPosZ;
+			const int farScale = (0x180 * 1000) / NativeSettings_WideSqueeze1000();
+			posX = tx * farScale + cameraPosX;
+			posY = ty * farScale + cameraPosY;
+			posZ = tz * farScale + cameraPosZ;
 		}
 #endif
 

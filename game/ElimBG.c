@@ -1,5 +1,9 @@
 #include <common.h>
 
+#ifdef CTR_NATIVE
+#include <platform/native_gpu.h>
+#endif
+
 enum ElimBGPauseState
 {
 	ELIM_BG_PAUSE_STATE_NONE = 0,
@@ -317,6 +321,9 @@ void ElimBG_HandleState(struct GameTracker *gGT)
 			sdata->pause_state = ELIM_BG_PAUSE_STATE_DRAW;
 		}
 		// rest of the function is for drawing screenshot
+#ifdef CTR_NATIVE
+		void *tilesStart = gGT->backBuffer->primMem.cursor;
+#endif
 		tileX = 0;
 		do
 		{
@@ -409,6 +416,10 @@ void ElimBG_HandleState(struct GameTracker *gGT)
 
 			// while u0 (tex coord X) < screensize
 		} while (tileX < ELIM_BG_SCREEN_W);
+#ifdef CTR_NATIVE
+		// The screenshot is of the whole (already wide) frame; widescreen must not squeeze its tiles.
+		NativeGpu_AddFullFrameRange(tilesStart, gGT->backBuffer->primMem.cursor);
+#endif
 	}
 }
 

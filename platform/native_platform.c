@@ -42,9 +42,47 @@ global_variable int s_pinnedVramDisplayX = 0;
 global_variable int s_pinnedVramDisplayY = 0;
 global_variable int s_pinnedVramDisplayW = 0;
 global_variable int s_pinnedVramDisplayH = 0;
+// Below 30 fps: frames owed to the window, in thirtieths of a frame (see Platform_EndScene).
+global_variable int s_presentCredit = 0;
 #define NATIVE_FPS_REPORT_FRAME_WINDOW 2000
 global_variable int s_fpsFrameCount = 0;
 global_variable u64 s_fpsLastCounter = 0;
+
+int Platform_GetTargetFrameRate(void)
+{
+	const struct NativeVideoSettings *video = &g_settings.video;
+	if (video->frameRateMatchDisplay && (g_window != NULL))
+	{
+		const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(g_window));
+		if ((mode != NULL) && (mode->refresh_rate > 0.0f))
+		{
+			// 59.94 -> 60.
+			const int refresh = (int)(mode->refresh_rate + 0.5f);
+			return SDL_clamp(refresh, NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_DISPLAY_MAX);
+		}
+	}
+	return SDL_clamp(video->frameRate, NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX);
+}
+
+// Below 30 fps every tick is still rendered (screen-copy effects read it back), but
+// only frameRate out of every 30 are shown.
+internal int Platform_ShouldPresentFrame(void)
+{
+	const int frameRate = Platform_GetTargetFrameRate();
+	if (frameRate >= NATIVE_FRAME_RATE_ORIGINAL)
+	{
+		s_presentCredit = 0;
+		return 1;
+	}
+
+	s_presentCredit += frameRate;
+	if (s_presentCredit < NATIVE_FRAME_RATE_ORIGINAL)
+	{
+		return 0;
+	}
+	s_presentCredit -= NATIVE_FRAME_RATE_ORIGINAL;
+	return 1;
+}
 
 internal void Platform_CalcFPS(void)
 {
@@ -434,6 +472,12 @@ void Platform_EndScene(void)
 	// NOTE(aalhendi): Keep the displayed VRAM region current for screen-copy
 	// effects without forcing a CPU readback.
 	NativeRenderer_StoreFrameBuffer(activeDispEnv.disp.x, activeDispEnv.disp.y, activeDispEnv.disp.w, activeDispEnv.disp.h);
+	if (!Platform_ShouldPresentFrame())
+	{
+		NativeRenderer_EndGpuFrame();
+		NativePerf_EndScope(NATIVE_PERF_BUCKET_PLATFORM_END_SCENE);
+		return;
+	}
 	NativeRenderer_PresentFrame(activeDispEnv.disp.x, activeDispEnv.disp.y, activeDispEnv.disp.w, activeDispEnv.disp.h);
 	NativeUI_Render();
 	NativeRenderer_EndGpuFrame();
