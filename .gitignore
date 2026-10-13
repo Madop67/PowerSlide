@@ -41,3 +41,6 @@ __pycache__/
 .idea/
 *.swp
 *~
+
+# Per-user settings written by the game
+ctr-native.toml
