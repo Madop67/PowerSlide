@@ -13,6 +13,13 @@ PowerSlide is a feature-rich native PC port of Crash Team Racing (PS1, NTSC-U), 
   - Changes to `game/` go inside `#ifdef CTR_NATIVE` (or `#if defined(CTR_NATIVE)`), so the PS1 matching build never sees them.
   - Run `./match.sh check` after touching `game/`. It must report `175/175 configured targets matched`.
 - **Branding is user-facing only.** The name comes from `include/platform/native_product.h`. Code, file and target names (`ctr_native.exe`, `[CTR Native]` log prefixes, the log file name) keep the upstream naming so merges stay cheap.
+- **Keep the macOS build working, even when you can't test it.** macOS runs the game as a wasm32 sandbox (see Environment), so every platform change also has to work there. When you can't build on a Mac, still write the macOS side:
+  - New GL call: rerun `python3 tools/macos/gen_wasm_gl_bridge.py` and commit the regenerated `guest_gl.h` and `host_gl.gen.c`. Pointer-to-pointer arguments and pointer returns need a hand-written shim; buffer-offset "pointers" go in `OFFSET_POINTER_ARGS`.
+  - New SDL call (in `platform/` or `native_ui.cpp`): add it to `platform/wasm/imports.syms` and add a `w2c_env_SDL_*` shim in `platform/wasm_host/host_sdl.c`. Opaque objects become handles (`HostHandle_*`), and returned strings or arrays are copied into guest memory.
+  - New SDL event type with pointer members: translate it in `w2c_env_SDL_PollEvent`; don't memcpy it.
+  - New source files: a C file reaches the guest through `main.c`'s unity build. A C++ file must also be added to `CTR_GUEST_CXX_SOURCES` in `cmake/ctr_wasm_sandbox.cmake`.
+  - No threads, `fork`/`exec`, `dlopen` or host-pointer-sized assumptions in guest code. Guest pointers are 32-bit.
+  - Say in the commit or PR when the macOS side is untested.
 - **Ship no game data.** `assets/` (the user's `ctr-u.bin` and extracted files) is git-ignored. Never commit Sony or Naughty Dog material, including the PlayStation logo.
 - **Commits:** branch first (no direct work on `master`), use conventional-commit style subjects (`feat(video): ...`), and add the `Co-Authored-By` trailer.
 
@@ -59,6 +66,15 @@ PowerSlide is a feature-rich native PC port of Crash Team Racing (PS1, NTSC-U), 
 | Build | macOS Apple Silicon build via a wasm32 sandbox (wasi-sdk → wasm2c → native arm64), including the ImGui settings menu | `cmake/ctr_wasm_sandbox.cmake`, `platform/wasm/`, `platform/wasm_host/`, `tools/macos/` |
 
 The debug wireframe toggle moved from F1 to Shift+F1. F2–F12 keep their upstream debug uses.
+
+## macOS port fixes (branch `fix/macos-port`, merged)
+
+Merging `feature/macos-port` with the settings, video and input work left macOS with the menu stubbed out and a failing version test. The fix:
+- The sandbox ctest version check now expects `PowerSlide`.
+- The guest compiles `main.c` (C) and `native_ui.cpp` + Dear ImGui (C++, `-fno-exceptions -fno-rtti`, `IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS`) to separate wasm objects and links them with wasi-sdk `clang++`. The embedded UI font block in `CMakeLists.txt` now runs before the sandbox branch so both builds get it.
+- ImGui's OpenGL3 backend uses `native_glad.h` → `guest_gl.h` as its custom loader (`IMGUI_IMPL_OPENGL_LOADER_CUSTOM`, force-included). glad stops at GL 3.1, so ImGui compiles out `glBindSampler`, `glDrawElementsBaseVertex` and `glClipControl` on its own. The GL bridge generator now scans the UI and backend sources, passes the `glDrawElements` index offset through, and skips the ES2-only `glGetVertexAttribPointerv`.
+- 25 new SDL host imports for the menu and ImGui's SDL3 backend (cursors, clipboard, text input, window queries, `SDL_PushEvent`, ...). `SDL_EVENT_TEXT_INPUT` is rebuilt in wasm32 layout, with the text in a reusable guest buffer (`HostSDL_TranslateTextInput`).
+- Verified on an M4: clean build, ctest 2/2, the game runs about 30 fps, and the menu renders. Mouse, keyboard and gamepad menu interaction still need a manual check.
 
 ## Next tasks (in order)
 
