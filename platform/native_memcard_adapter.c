@@ -1,5 +1,8 @@
 #include <common.h>
 #include <platform/native_memcard.h>
+// In-between frames (frame interpolation) are drawn on rolled-back game memory;
+// the host calls they make are dropped. See native_interp.h.
+#include <platform/native_interp.h>
 
 static u8 s_memcardNativeInfoSeen[2];
 
@@ -48,6 +51,11 @@ void MEMCARD_GetFreeBytes(int slotIdx)
 
 s32 MEMCARD_GetInfo(int slotIdx)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return MC_RETURN_TIMEOUT;
+	}
+
 	// NOTE(aalhendi): Native treats the host save directory as an inserted card;
 	// PSX updates free space while handling the async info event that native skips.
 	MEMCARD_GetFreeBytes(slotIdx);
@@ -65,6 +73,11 @@ s32 MEMCARD_GetInfo(int slotIdx)
 
 s32 MEMCARD_Format(int slotIdx)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return MC_RETURN_TIMEOUT;
+	}
+
 	(void)slotIdx;
 	return MC_RETURN_IOE;
 }
@@ -79,6 +92,11 @@ int MEMCARD_IsFile(int slotIdx, char *save_name)
 
 char *MEMCARD_FindFirstGhost(int slotIdx, char *srcString)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return NULL;
+	}
+
 	if (sdata->memcard_stage != MC_STAGE_IDLE)
 	{
 		return NULL;
@@ -97,6 +115,11 @@ char *MEMCARD_FindFirstGhost(int slotIdx, char *srcString)
 
 char *MEMCARD_FindNextGhost(void)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return NULL;
+	}
+
 	if (sdata->memcard_stage != MC_STAGE_GHOST_FOUND)
 	{
 		return NULL;
@@ -113,6 +136,11 @@ char *MEMCARD_FindNextGhost(void)
 
 s32 MEMCARD_EraseFile(int slotIdx, char *srcString)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return MC_RETURN_TIMEOUT;
+	}
+
 	char nativeName[64];
 
 	MEMCARD_StringSet(nativeName, slotIdx, srcString);
@@ -189,6 +217,11 @@ s32 MEMCARD_Load(int slotIdx, char *name, u8 *ptrMemcard, int memcardFileSize, u
 
 s32 MEMCARD_Save(int slotIdx, char *name, char *icon, u8 *ptrMemcard, int memcardFileSize, u32 saveFlags)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return MC_RETURN_TIMEOUT;
+	}
+
 	char nativeName[64];
 
 	sdata->crc16_checkpoint_byteIndex = 0;

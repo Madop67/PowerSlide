@@ -301,6 +301,19 @@ void NativeGpu_AddHudAnchorRange(const void *start, const void *end)
 	s_wide.anchorCount++;
 }
 
+int NativeGpu_GetHudAnchorCount(void)
+{
+	return s_wide.anchorCount;
+}
+
+void NativeGpu_SetHudAnchorCount(int count)
+{
+	if ((count >= 0) && (count <= s_wide.anchorCount))
+	{
+		s_wide.anchorCount = count;
+	}
+}
+
 // Called for every zero-length packet in the walk: OT slots are the only
 // zero-length nodes, and each one starts the chain of a new slot.
 internal void NativeGpu_UpdateHudRegion(const u8 *packet)

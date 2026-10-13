@@ -15,6 +15,7 @@ volatile int gCtrDebugSkipLevelGeometry = 0;
 
 #if defined(CTR_NATIVE)
 #include <platform/native_gpu.h>
+#include <platform/native_interp.h>
 
 // Widescreen edge anchoring tags the primitive memory the race HUD (and its 3D
 // models) is drawn into; menus and results screens stay centred.
@@ -57,7 +58,17 @@ void MainFrame_RenderFrame(struct GameTracker *gGT, struct GamepadSystem *gGamep
 		}
 	}
 
+#if defined(CTR_NATIVE)
+	// In-between (interpolated) frames redraw the current tick: skip work that
+	// advances the game. Its memory is rolled back anyway, but this saves time.
+	b32 nativeLogic = !NativeInterp_InRenderPass();
+#endif
+
+#if defined(CTR_NATIVE)
+	if (nativeLogic && ((sdata->ptrActiveMenu != 0) || ((gGT->gameMode1 & END_OF_RACE) != 0)))
+#else
 	if ((sdata->ptrActiveMenu != 0) || ((gGT->gameMode1 & END_OF_RACE) != 0))
+#endif
 	{
 		RECTMENU_CollectInput();
 	}
@@ -71,7 +82,12 @@ void MainFrame_RenderFrame(struct GameTracker *gGT, struct GamepadSystem *gGamep
 	}
 
 	RainLogic(gGT);
-	DropRain_MakeSound(gGT);
+#if defined(CTR_NATIVE)
+	if (nativeLogic)
+#endif
+	{
+		DropRain_MakeSound(gGT);
+	}
 	MenuHighlight();
 	MAINFRAME_PERF_END(NATIVE_PERF_BUCKET_MAINFRAME_SETUP);
 
@@ -196,7 +212,11 @@ void MainFrame_RenderFrame(struct GameTracker *gGT, struct GamepadSystem *gGamep
 		}
 
 		// if game is not loading
+#if defined(CTR_NATIVE)
+		if (nativeLogic && (sdata->Loading.stage == LOAD_IDLE))
+#else
 		if (sdata->Loading.stage == LOAD_IDLE)
+#endif
 		{
 			// If game is not paused
 			if ((gGT->gameMode1 & PAUSE_ALL) == 0)
@@ -221,7 +241,11 @@ void MainFrame_RenderFrame(struct GameTracker *gGT, struct GamepadSystem *gGamep
 
 	// If in main menu, or in adventure arena,
 	// or in End-Of-Race menu
+#if defined(CTR_NATIVE)
+	if (nativeLogic && ((gGT->gameMode1 & (ADVENTURE_ARENA | END_OF_RACE | MAIN_MENU)) != 0))
+#else
 	if ((gGT->gameMode1 & (ADVENTURE_ARENA | END_OF_RACE | MAIN_MENU)) != 0)
+#endif
 	{
 		MAINFRAME_PERF_BEGIN(NATIVE_PERF_BUCKET_MAINFRAME_REFRESHCARD);
 		RefreshCard_Entry();
@@ -244,6 +268,14 @@ void MainFrame_RenderFrame(struct GameTracker *gGT, struct GamepadSystem *gGamep
 
 	RenderDispEnv_UI(gGT);
 	MAINFRAME_PERF_END(NATIVE_PERF_BUCKET_MAINFRAME_UI);
+
+#if defined(CTR_NATIVE)
+	// NativeInterp submits and presents in-between frames itself, without the VSync wait.
+	if (!nativeLogic)
+	{
+		return;
+	}
+#endif
 
 	MAINFRAME_PERF_BEGIN(NATIVE_PERF_BUCKET_MAINFRAME_RENDER_VSYNC);
 	RenderVSYNC(gGT);

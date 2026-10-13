@@ -74,6 +74,7 @@ global_variable const struct NativeSettingDesc s_fixedDescs[] = {
 	{"video", "integer_scaling", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(integerScaling), 0, 1, NULL},
 	{"video", "scale_filter", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(scaleFilter), 0, NATIVE_SCALE_FILTER_COUNT - 1, s_scaleFilterNames},
 	{"video", "texture_filtering", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(textureFiltering), 0, 1, NULL},
+	{"video", "frame_rate", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(frameRate), NATIVE_FRAME_RATE_ORIGINAL, NATIVE_FRAME_RATE_MAX, NULL},
 	{"video", "show_fps", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(showFps), 0, 1, NULL},
 };
 
@@ -211,6 +212,7 @@ void NativeSettings_SetDefaults(struct NativeSettings *settings)
 	settings->video.displayMode = NATIVE_DISPLAY_WINDOWED;
 	settings->video.aspectMode = NATIVE_ASPECT_ORIGINAL;
 	settings->video.renderScale = 1;
+	settings->video.frameRate = NATIVE_FRAME_RATE_ORIGINAL;
 	settings->video.scaleFilter = NATIVE_SCALE_FILTER_SHARP;
 	NativeSettings_SetInputDefaults(&settings->input);
 }

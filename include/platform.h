@@ -22,8 +22,14 @@ void Platform_EndFrame(void);
 void Platform_PresentVRAMDisplay(void);
 void Platform_PinVRAMDisplayFrames(int frameCount);
 void Platform_PinVRAMDisplayRect(int x, int y, int w, int h, int frameCount);
+int Platform_IsVRAMDisplayPinned(void);
 int Platform_GetVBlankCount(void);
 void Platform_WaitUntilVBlank(int targetVBlank);
+// Host performance-counter time at which VBlank number `vblankIndex` is (or was)
+// due on the paced VBlank clock.
+unsigned long long Platform_GetVBlankTime(int vblankIndex);
+// Sleeps until the performance counter reaches `target`, emitting VBlanks as they fall due.
+void Platform_WaitUntilTime(unsigned long long target);
 void Platform_PollHostEvents(void);
 int Platform_PollInput(void);
 

@@ -7,6 +7,9 @@
 
 #include <stdio.h>
 #include <string.h>
+// In-between frames (frame interpolation) are drawn on rolled-back game memory;
+// the host calls they make are dropped. See native_interp.h.
+#include <platform/native_interp.h>
 
 // NOTE(aalhendi): Native exports the retail Cd* API. Extracted host files stay
 // as dev/modding overrides; missing files can fall back to assets/ctr-u.bin.
@@ -352,6 +355,11 @@ CdlFILE *CdSearchFile(CdlFILE *loc, char *filename)
 
 int CdControl(uint8_t com, uint8_t *param, uint8_t *result)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	(void)result;
 
 	NativeCD_SetLastCom(com);
@@ -379,6 +387,11 @@ int CdControl(uint8_t com, uint8_t *param, uint8_t *result)
 
 int CdRead(int sectors, uint32_t *buf, int mode)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	(void)mode;
 
 	NativeCD_ReadSectors(sectors, buf);

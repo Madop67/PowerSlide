@@ -34,5 +34,9 @@ void NativeGpu_SetWidescreenFrame(int bufferIndex, const void *otBase, int otByt
 // Marks primitive memory [start, end) as race HUD, which edge anchoring may move
 // to the screen (or split-screen half) edges.
 void NativeGpu_AddHudAnchorRange(const void *start, const void *end);
+// Frame interpolation draws a frame between two real ones; it puts the anchor
+// list back afterwards so the real frame's ranges are not crowded out.
+int NativeGpu_GetHudAnchorCount(void);
+void NativeGpu_SetHudAnchorCount(int count);
 
 #endif

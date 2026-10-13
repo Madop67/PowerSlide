@@ -9,6 +9,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+// In-between frames (frame interpolation) are drawn on rolled-back game memory;
+// the host calls they make are dropped. See native_interp.h.
+#include <platform/native_interp.h>
 
 #define NATIVE_AUDIO_SAMPLE_RATE             44100
 #define NATIVE_AUDIO_CHANNELS                2
@@ -2956,6 +2959,11 @@ void NativeAudio_Shutdown(void)
 
 s32 NativeAudio_SpuInit(void)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	if (!s_audio.init)
 	{
 		memset(&s_audio.spu, 0, sizeof(s_audio.spu));
@@ -2981,6 +2989,11 @@ s32 NativeAudio_SpuInit(void)
 
 u32 NativeAudio_SpuSetTransferStartAddr(u32 addr)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return addr;
+	}
+
 	if (addr > NATIVE_AUDIO_SPU_MEMSIZE)
 	{
 		return 0;
@@ -2998,6 +3011,11 @@ u32 NativeAudio_SpuSetTransferStartAddr(u32 addr)
 
 u32 NativeAudio_SpuWrite(const u8 *addr, u32 size)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return size;
+	}
+
 	NativeAudio_LockOutput();
 
 	int wptrOfs = s_audio.spu.transferOffset;
@@ -3018,6 +3036,11 @@ u32 NativeAudio_SpuWrite(const u8 *addr, u32 size)
 
 void NativeAudio_SpuSetVoiceAttr(SpuVoiceAttr *psxAttrib)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	if (!s_audio.init || psxAttrib == NULL)
 	{
 		return;
@@ -3114,6 +3137,11 @@ void NativeAudio_SpuSetVoiceAttr(SpuVoiceAttr *psxAttrib)
 
 void NativeAudio_SpuSetKey(s32 on_off, u32 voice_bit)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	if (!s_audio.init)
 	{
 		return;
@@ -3164,6 +3192,11 @@ void NativeAudio_SpuSetKey(s32 on_off, u32 voice_bit)
 
 s32 NativeAudio_SpuSetReverb(s32 on_off)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return on_off;
+	}
+
 	NativeAudio_LockOutput();
 
 	int oldState = s_audio.reverbEnabled;
@@ -3176,6 +3209,11 @@ s32 NativeAudio_SpuSetReverb(s32 on_off)
 
 s32 NativeAudio_SpuSetReverbModeParam(SpuReverbAttr *attr)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	if (attr == NULL)
 	{
 		return SPU_INVALID_ARGS;
@@ -3218,6 +3256,11 @@ s32 NativeAudio_SpuSetReverbModeParam(SpuReverbAttr *attr)
 
 void NativeAudio_SpuSetReverbModeDepth(s16 left, s16 right)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	NativeAudio_LockOutput();
 
 	s_audio.reverbAttr.depth.left = left;
@@ -3229,6 +3272,11 @@ void NativeAudio_SpuSetReverbModeDepth(s16 left, s16 right)
 
 u32 NativeAudio_SpuSetReverbVoice(s32 on_off, u32 voice_bit)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	NativeAudio_LockOutput();
 
 	if (on_off)
@@ -3255,6 +3303,11 @@ u32 NativeAudio_SpuSetReverbVoice(s32 on_off, u32 voice_bit)
 
 void NativeAudio_SpuSetCommonMasterVolume(s16 left, s16 right)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	NativeAudio_LockOutput();
 
 	s_audio.masterVolumeLeft = left;
@@ -3268,6 +3321,11 @@ void NativeAudio_SpuSetCommonMasterVolume(s16 left, s16 right)
 
 void NativeAudio_SpuSetCommonCDMix(s32 enabled)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	NativeAudio_LockOutput();
 
 	s_audio.cdMixEnabled = enabled != 0;
@@ -3279,6 +3337,11 @@ void NativeAudio_SpuSetCommonCDMix(s32 enabled)
 
 void NativeAudio_SpuSetCommonCDVolume(s16 left, s16 right)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	NativeAudio_LockOutput();
 
 	s_audio.xa.volumeLeft = left;
@@ -3292,6 +3355,11 @@ void NativeAudio_SpuSetCommonCDVolume(s16 left, s16 right)
 
 void NativeAudio_SpuSetCommonCDReverb(s32 enabled)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	NativeAudio_LockOutput();
 
 	s_audio.cdReverbEnabled = enabled != 0;
@@ -3315,6 +3383,11 @@ int NativeAudio_GetXATrackLength(int categoryID, int xaID)
 
 void NativeAudio_StopXA(void)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	NativeAudio_LockOutput();
 
 	NativeAudio_CloseXANoLock();
@@ -3324,6 +3397,11 @@ void NativeAudio_StopXA(void)
 
 void NativeAudio_SetXAVolume(int volumeLeft, int volumeRight)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	NativeAudio_LockOutput();
 
 	s_audio.xa.volumeLeft = (s16)volumeLeft;
@@ -3348,6 +3426,11 @@ int NativeAudio_IsXAPlaying(void)
 
 int NativeAudio_PlayXATrack(int categoryID, int xaID, int volumeLeft, int volumeRight)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	struct NativeAudioXaTrackInfo info;
 	struct NativeAudioXaSource source;
 	struct NativeAudioXaPreparedStream prepared;
@@ -3404,6 +3487,11 @@ int NativeAudio_PlayXATrack(int categoryID, int xaID, int volumeLeft, int volume
 
 int NativeAudio_PlayXAFile(const char *relativePath, int channelFilter, int volumeLeft, int volumeRight)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	struct NativeAudioXaSource source;
 	struct NativeAudioXaPreparedStream prepared;
 
