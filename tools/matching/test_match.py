@@ -100,7 +100,7 @@ class SharedSectionsTests(unittest.TestCase):
     def test_generated_tables_must_agree_with_the_emitted_artifact(self) -> None:
         toolchain = SimpleNamespace(binutils={"objdump": "objdump"})
         with tempfile.TemporaryDirectory() as directory:
-            linked = Path(directory) / "overlay.elf"
+            linked = Path(directory).resolve() / "overlay.elf"
             for address, table, accepted in ((0x80001004, b"KEY!", True),
                                              (0x80001004, b"BAD!", False),
                                              (0x80001004, b"KEY", False),
@@ -135,7 +135,7 @@ class ComparisonTests(unittest.TestCase):
 
     def test_first_difference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             expected = root / "expected.bin"
             actual = root / "actual.bin"
             expected.write_bytes(b"abcdef")
@@ -144,7 +144,7 @@ class ComparisonTests(unittest.TestCase):
 
     def test_length_difference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             expected = root / "expected.bin"
             actual = root / "actual.bin"
             expected.write_bytes(b"abcdef")
@@ -153,7 +153,7 @@ class ComparisonTests(unittest.TestCase):
 
     def test_exact_files_have_no_difference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             expected = root / "expected.bin"
             actual = root / "actual.bin"
             expected.write_bytes(b"same")
@@ -204,7 +204,7 @@ class ToolchainTests(unittest.TestCase):
 
     def test_require_tool_rejects_wrong_hash(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "tool"
+            path = Path(directory).resolve() / "tool"
             path.write_bytes(b"not the pinned tool")
             with self.assertRaises(ctr_match.MatchError):
                 ctr_match.require_tool(path, "test tool", "0" * 64)
@@ -251,7 +251,7 @@ class ResidentNamespaceTests(unittest.TestCase):
                    ctr_resident.Symbol("Test_Second", 0x1004),
                    ctr_resident.Symbol("Test_End", 0x1008)]
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             config = {"name": "sample", "sources": ["source.c"],
                       "start_symbol": "Test_First", "end_symbol": "Test_End",
                       "symbol_prefix": "Test_"}
@@ -278,7 +278,7 @@ class ResidentNamespaceTests(unittest.TestCase):
                    ctr_resident.Symbol("Test_End", 0x1008),
                    ctr_resident.Symbol("Outside", 0x2000)]
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             config = {"name": "sample", "sources": ["source.c"],
                       "start_symbol": "Test_First", "end_symbol": "Test_End",
                       "symbol_prefix": "Test_"}
@@ -325,7 +325,7 @@ class ResidentNamespaceTests(unittest.TestCase):
 
     def test_owned_input_section_cannot_contain_another_function(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "source.c").write_text("void Actual_Second(void) {}\n")
             (root / "symbols.txt").write_text("00001004 Test_Second\n00001008 Test_End\n")
             config = {"name": "sample", "artifact": "exe", "symbol_file": "symbols.txt",
@@ -348,7 +348,7 @@ class ResidentNamespaceTests(unittest.TestCase):
 
     def test_identity_assembly_entry_can_enclose_a_c_body_in_its_section(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "source.c").write_text(
                 '__asm__(".globl Test_Entry\\n"\n "Test_Entry:\\n");\n'
                 'void Test_Body(void) {}\n'
@@ -380,7 +380,7 @@ class ResidentNamespaceTests(unittest.TestCase):
         callback = ctr_resident.FunctionRange("Test_First", 0x1000, 4, "source.c")
         toolchain = SimpleNamespace(binutils={"ld": Path("ld"), "objdump": Path("objdump")})
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             config = {"name": "sample", "owned_symbols": {"Test_Second": "Actual_Second"}}
             for function in (mapped, callback):
                 emitted = function.emitted_name
@@ -416,7 +416,7 @@ class ResidentNamespaceTests(unittest.TestCase):
         function = ctr_resident.FunctionRange("Test_Second", 0x1004, 4, "source.c", "Actual_Second")
         toolchain = SimpleNamespace(binutils={"ld": Path("ld"), "objdump": Path("objdump")})
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             for address, size, section in ((0x1008, 4, ".Test_Second"), (0x1004, 8, ".Test_Second"),
                                            (0x1004, 4, "*ABS*"), (0x1004, 4, ".Wrong")):
                 table = f"{address:08x} g F {section} {size:08x} Actual_Second\n"
@@ -438,7 +438,7 @@ class ResidentNamespaceTests(unittest.TestCase):
                      ctr_resident.FunctionRange("Test_Second", 0x1004, 4, "source.c", "Actual_Second")]
         toolchain = SimpleNamespace(binutils={"ld": Path("ld"), "objdump": Path("objdump")})
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "symbols.txt").write_text("00001000 Test_First\n00001004 Test_Second\n")
             config = {"name": "sample", "artifact": "exe", "linked_block": {}, "symbol_file": "symbols.txt"}
             for address, size, section in ((0x1004, 4, ".resident_block"), (0x1008, 4, ".resident_block"),
@@ -467,7 +467,7 @@ class ResidentNamespaceTests(unittest.TestCase):
 
     def test_linked_block_requires_all_sources_and_preserves_configured_order(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "symbols.txt").write_text(
                 "80010000 Test_First\n80010004 Test_Second\n80010008 Test_End\n"
             )
@@ -552,7 +552,7 @@ class ResidentNamespaceTests(unittest.TestCase):
 
     def test_resident_assembly_closes_small_data_before_a_function(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            assembly = Path(directory) / "source.s"
+            assembly = Path(directory).resolve() / "source.s"
             assembly.write_text(
                 "\t.sdata\nvalue:\n\t.word\t1\n"
                 "\t.extern\tsdata_static+832, 4\n"
@@ -665,7 +665,7 @@ class CheckTests(unittest.TestCase):
 class InitializedDataBuildTests(unittest.TestCase):
     def test_disjoint_data_sections_share_one_build_and_leave_gaps_unowned(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "data.c").write_text("two initialized sections")
             (root / "data.ld").write_text("disjoint section layout")
             (root / "symbols.txt").write_text("80010000 first\n80010010 second\n")
@@ -740,7 +740,7 @@ class InitializedDataBuildTests(unittest.TestCase):
 
     def test_build_reports_only_the_linked_data_range_and_tracks_its_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "data.c").write_text("shared initializer")
             (root / "data.ld").write_text("initialized section layout")
             (root / "symbols.txt").write_text("80010000 data\n")
@@ -831,7 +831,7 @@ class EvidenceTests(unittest.TestCase):
                   "owned_symbols": {"Test_Read": "Actual_Read"}}
         manifest = {"artifacts": [{"id": "exe"}], "toolchain": {"maspsx": {"aspsx_version": "2.77"}}}
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "source.c").write_text("void Actual_Read(void) {}\n")
             (root / "symbols.txt").write_text("00001000 Test_Read\n")
             (root / "candidate.bin").write_bytes(b"GOOD")
@@ -861,7 +861,7 @@ class EvidenceTests(unittest.TestCase):
 
     def test_evidence_expires_when_an_input_or_candidate_changes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             source = root / "source.c"
             header = root / "header.h"
             candidate = root / "candidate.bin"
@@ -966,7 +966,7 @@ class PsxHeaderTests(unittest.TestCase):
         struct.pack_into("<I", header, 0x1C, 0x7D800)
         struct.pack_into("<I", header, 0x30, 0x801FFFF0)
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "SCUS_944.26"
+            path = Path(directory).resolve() / "SCUS_944.26"
             path.write_bytes(header)
             self.assertEqual(ctr_match.check_psx_exe_header(path, artifact), [])
 

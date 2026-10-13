@@ -32,6 +32,17 @@
 #include <string.h>
 #include "platform/native_glad.h"
 
+#if defined(CTR_NATIVE_WASM)
+// NOTE: The wasm sandbox build imports GL entry points directly from the host
+// (see include/platform/wasm/guest_gl.h), so there is nothing to load.
+int GLAD_GL_KHR_debug = 0;
+
+int gladLoadGL(void)
+{
+	GLAD_GL_KHR_debug = SDL_GL_ExtensionSupported("GL_KHR_debug") ? 1 : 0;
+	return 1;
+}
+#else
 internal void *get_proc(const char *namez);
 
 #if defined(_WIN32) || defined(__CYGWIN__)
@@ -2056,3 +2067,4 @@ int gladLoadGLES2Loader(GLADloadproc load)
 	load_GL_KHR_debug(load);
 	return GLVersion.major != 0 || GLVersion.minor != 0;
 }
+#endif

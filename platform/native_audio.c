@@ -2307,13 +2307,10 @@ internal int NativeAudio_DrainRenderedFramesNoLock(s16 *out, int frameCount)
 	return framesDrained;
 }
 
-internal void SDLCALL NativeAudio_StreamCallback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
+internal void NativeAudio_FillStreamNoLock(SDL_AudioStream *stream, int additional_amount)
 {
 	const int frameBytes = (int)sizeof(s16) * NATIVE_AUDIO_CHANNELS;
 	s16 out[NATIVE_AUDIO_VBLANK_FRAMES * NATIVE_AUDIO_CHANNELS];
-
-	(void)userdata;
-	(void)total_amount;
 
 	if ((stream == NULL) || (additional_amount <= 0))
 	{
@@ -2362,6 +2359,38 @@ internal void SDLCALL NativeAudio_StreamCallback(void *userdata, SDL_AudioStream
 		framesNeeded -= chunkFrames;
 	}
 }
+
+#if !defined(CTR_NATIVE_WASM)
+internal void SDLCALL NativeAudio_StreamCallback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
+{
+	(void)userdata;
+	(void)total_amount;
+
+	NativeAudio_FillStreamNoLock(stream, additional_amount);
+}
+#else
+// NOTE: The wasm sandbox build has one guest instance with one shadow stack, so
+// SDL's audio thread must not call back into guest code. Instead the stream is
+// opened without a callback and topped up from the VBlank path.
+#define NATIVE_AUDIO_WASM_TARGET_FRAMES (NATIVE_AUDIO_VBLANK_FRAMES * 4)
+
+internal void NativeAudio_PumpOutputNoLock(void)
+{
+	const int frameBytes = (int)sizeof(s16) * NATIVE_AUDIO_CHANNELS;
+	const int targetBytes = NATIVE_AUDIO_WASM_TARGET_FRAMES * frameBytes;
+
+	if (s_audio.output.stream == NULL)
+	{
+		return;
+	}
+
+	int queuedBytes = SDL_GetAudioStreamQueued(s_audio.output.stream);
+	if ((queuedBytes >= 0) && (queuedBytes < targetBytes))
+	{
+		NativeAudio_FillStreamNoLock(s_audio.output.stream, targetBytes - queuedBytes);
+	}
+}
+#endif
 
 void NativeAudio_ClearOutputQueue(void)
 {
@@ -2812,6 +2841,10 @@ void NativeAudio_StepVBlank(void)
 		NativeAudio_QueueRenderedFramesNoLock(renderedFrames, framesRendered);
 	}
 
+#if defined(CTR_NATIVE_WASM)
+	NativeAudio_PumpOutputNoLock();
+#endif
+
 #ifdef CTR_INTERNAL
 	shouldReportStats = NativeAudio_ShouldReportOutputStatsNoLock(&underrunFrames, &overflowFrames, &queuedFrames);
 #endif
@@ -2856,7 +2889,13 @@ internal int NativeAudio_OpenDevice(void)
 	want.format = SDL_AUDIO_S16;
 	want.channels = NATIVE_AUDIO_CHANNELS;
 
-	s_audio.output.stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &want, NativeAudio_StreamCallback, NULL);
+	s_audio.output.stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &want,
+#if defined(CTR_NATIVE_WASM)
+	                                                   NULL,
+#else
+	                                                   NativeAudio_StreamCallback,
+#endif
+	                                                   NULL);
 	if (s_audio.output.stream == NULL)
 	{
 		fprintf(stderr, "[CTR Native] SDL audio unavailable: %s\n", SDL_GetError());

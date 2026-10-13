@@ -4,7 +4,15 @@ include(CheckCCompilerFlag)
 
 set(CTR_NATIVE_VERSION "0.1.0-beta.7.1")
 
-if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+# NOTE: macOS cannot run 32-bit executables, so it builds the game as a wasm32
+# (ILP32) sandbox translated to native C. See cmake/ctr_wasm_sandbox.cmake.
+if(APPLE)
+    option(CTR_NATIVE_SANDBOX "Build the game as a wasm32 sandbox (required on macOS)" ON)
+else()
+    option(CTR_NATIVE_SANDBOX "Build the game as a wasm32 sandbox (required on macOS)" OFF)
+endif()
+
+if(NOT CTR_NATIVE_SANDBOX AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
     message(FATAL_ERROR
         "CTR Native currently requires a 32-bit target. "
         "Select Win32 for MSVC, an i686 MinGW compiler on Windows, or pass -m32 "
@@ -81,6 +89,11 @@ set(SDL_SNDIO_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_X11_XSCRNSAVER OFF CACHE BOOL "" FORCE)
 set(SDL_X11_XTEST OFF CACHE BOOL "" FORCE)
 add_subdirectory(externals/SDL)
+
+if(CTR_NATIVE_SANDBOX)
+    include(cmake/ctr_wasm_sandbox.cmake)
+    return()
+endif()
 
 # In-game settings UI: Dear ImGui is C++, so it builds as its own library and the
 # game code stays C17. Only platform/native_ui.cpp talks to ImGui.

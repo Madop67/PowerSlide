@@ -68,6 +68,10 @@
 #include "platform/native_state.c"
 #include "platform/native_str.c"
 
+#if defined(CTR_NATIVE_WASM)
+#include "platform/wasm/guest_wasm.c"
+#endif
+
 #ifndef CC
 #if defined(__GNUC__)
 #if _WIN32
