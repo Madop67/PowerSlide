@@ -106,7 +106,7 @@ internal void Platform_HandleWindowResize(int width, int height)
 	NativeRenderer_ResetDevice();
 }
 
-internal void Platform_UpdateCursorVisibility(void)
+void Platform_UpdateCursorVisibility(void)
 {
 	if (g_window == NULL)
 	{
@@ -516,11 +516,12 @@ void Platform_PollHostEvents(void)
 
 			Platform_UpdateHostAltKeyState(key, down);
 
-			if (key == SDL_SCANCODE_F1)
+			// F1 toggles the settings menu; Esc also closes it while open.
+			if ((key == SDL_SCANCODE_F1) || ((key == SDL_SCANCODE_ESCAPE) && NativeUI_IsMenuOpen()))
 			{
 				if ((down != 0) && (event.key.repeat == 0))
 				{
-					if ((event.key.mod & SDL_KMOD_SHIFT) != 0)
+					if ((key == SDL_SCANCODE_F1) && ((event.key.mod & SDL_KMOD_SHIFT) != 0))
 					{
 #ifdef CTR_INTERNAL
 						g_dbg_wireframeMode ^= 1;
@@ -530,7 +531,6 @@ void Platform_PollHostEvents(void)
 					else
 					{
 						NativeUI_ToggleMenu();
-						Platform_UpdateCursorVisibility();
 						Platform_Log("[CTR Native] Settings menu %s\n", NativeUI_IsMenuOpen() ? "opened" : "closed");
 					}
 				}

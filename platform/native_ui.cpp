@@ -1,6 +1,7 @@
 // In-game settings menu built on Dear ImGui (externals/imgui).
-// F1 toggles a menu bar; settings windows hang off it. Overlays such as the
-// FPS counter draw whether or not the menu is open.
+// F1 (or Esc while open) toggles one tabbed "CTR Native" window, styled after
+// the game's own orange/yellow-on-blue menus. Overlays such as the FPS counter
+// draw whether or not the menu is open.
 
 #include <platform/native_ui.h>
 #include <platform/native_settings.h>
@@ -8,6 +9,7 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
+#include "native_ui_font.h"
 
 #include <stdio.h>
 
@@ -22,10 +24,11 @@
 namespace
 {
 
-// The default font is designed for 13 px; the UI grows past that only for
-// windows taller than kReferenceHeight (and for high-DPI displays).
-constexpr float kBaseFontSize = 13.0f;
+// Font size at windows up to kReferenceHeight tall; larger windows and
+// high-DPI displays scale the whole UI up from there.
+constexpr float kBaseFontSize = 16.0f;
 constexpr float kReferenceHeight = 720.0f;
+constexpr float kTitleFontScale = 1.6f;
 
 struct WindowSizePreset
 {
@@ -48,33 +51,119 @@ constexpr const char *kDisplayModeNames[NATIVE_DISPLAY_COUNT] = {"Windowed", "Fu
 constexpr const char *kAspectModeNames[NATIVE_ASPECT_COUNT] = {"Original (4:3)", "Stretch to window"};
 constexpr const char *kScaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"Sharp (nearest)", "Smooth (bilinear)"};
 
+// CTR palette, taken from the retail menus: orange and yellow on deep blue.
+constexpr ImU32 Rgb(unsigned r, unsigned g, unsigned b)
+{
+	return IM_COL32(r, g, b, 255);
+}
+
+ImVec4 Color(ImU32 rgb, float alpha = 1.0f)
+{
+	ImVec4 c = ImGui::ColorConvertU32ToFloat4(rgb);
+	c.w = alpha;
+	return c;
+}
+
+constexpr ImU32 kNavy = Rgb(0x12, 0x18, 0x3A);
+constexpr ImU32 kDeepBlue = Rgb(0x1B, 0x2A, 0x78);
+constexpr ImU32 kBlue = Rgb(0x23, 0x40, 0xA8);
+constexpr ImU32 kBrightBlue = Rgb(0x30, 0x55, 0xD0);
+constexpr ImU32 kFrame = Rgb(0x1E, 0x2A, 0x63);
+constexpr ImU32 kFrameHover = Rgb(0x29, 0x39, 0x8A);
+constexpr ImU32 kOrange = Rgb(0xE8, 0x73, 0x1A);
+constexpr ImU32 kOrangeLight = Rgb(0xF5, 0x9A, 0x2A);
+constexpr ImU32 kOrangeDark = Rgb(0xC9, 0x55, 0x0E);
+constexpr ImU32 kYellow = Rgb(0xFF, 0xD2, 0x1F);
+constexpr ImU32 kMutedText = Rgb(0x9A, 0xA4, 0xD8);
+
 SDL_Window *s_window = nullptr;
 bool s_initialized = false;
 bool s_menuOpen = false;
-bool s_showVideoWindow = true;
-bool s_showAboutWindow = false;
 float s_styleScale = 0.0f;
+
+void ApplyColors(ImGuiStyle &style)
+{
+	ImVec4 *c = style.Colors;
+	c[ImGuiCol_Text] = Color(Rgb(0xFF, 0xFF, 0xFF));
+	c[ImGuiCol_TextDisabled] = Color(kMutedText);
+	c[ImGuiCol_WindowBg] = Color(kNavy, 0.96f);
+	c[ImGuiCol_ChildBg] = Color(kNavy, 0.0f);
+	c[ImGuiCol_PopupBg] = Color(kNavy, 0.98f);
+	c[ImGuiCol_Border] = Color(kOrange, 0.85f);
+	c[ImGuiCol_BorderShadow] = Color(0, 0.0f);
+	c[ImGuiCol_FrameBg] = Color(kFrame);
+	c[ImGuiCol_FrameBgHovered] = Color(kFrameHover);
+	c[ImGuiCol_FrameBgActive] = Color(kBlue);
+	c[ImGuiCol_TitleBg] = Color(kDeepBlue);
+	c[ImGuiCol_TitleBgActive] = Color(kBlue);
+	c[ImGuiCol_TitleBgCollapsed] = Color(kDeepBlue, 0.8f);
+	c[ImGuiCol_ScrollbarBg] = Color(kNavy, 0.6f);
+	c[ImGuiCol_ScrollbarGrab] = Color(kBlue);
+	c[ImGuiCol_ScrollbarGrabHovered] = Color(kBrightBlue);
+	c[ImGuiCol_ScrollbarGrabActive] = Color(kOrange);
+	c[ImGuiCol_CheckMark] = Color(kYellow);
+	c[ImGuiCol_SliderGrab] = Color(kOrangeLight);
+	c[ImGuiCol_SliderGrabActive] = Color(kYellow);
+	c[ImGuiCol_Button] = Color(kOrange);
+	c[ImGuiCol_ButtonHovered] = Color(kOrangeLight);
+	c[ImGuiCol_ButtonActive] = Color(kOrangeDark);
+	c[ImGuiCol_Header] = Color(kBlue);
+	c[ImGuiCol_HeaderHovered] = Color(kBrightBlue);
+	c[ImGuiCol_HeaderActive] = Color(kOrange);
+	c[ImGuiCol_Separator] = Color(kOrange, 0.55f);
+	c[ImGuiCol_SeparatorHovered] = Color(kOrangeLight);
+	c[ImGuiCol_SeparatorActive] = Color(kYellow);
+	c[ImGuiCol_ResizeGrip] = Color(kOrange, 0.3f);
+	c[ImGuiCol_ResizeGripHovered] = Color(kOrangeLight, 0.7f);
+	c[ImGuiCol_ResizeGripActive] = Color(kYellow);
+	c[ImGuiCol_Tab] = Color(kDeepBlue);
+	c[ImGuiCol_TabHovered] = Color(kOrangeLight);
+	c[ImGuiCol_TabSelected] = Color(kOrange);
+	c[ImGuiCol_TabSelectedOverline] = Color(kYellow);
+	c[ImGuiCol_TabDimmed] = Color(kDeepBlue);
+	c[ImGuiCol_TabDimmedSelected] = Color(kOrangeDark);
+	c[ImGuiCol_TextSelectedBg] = Color(kOrange, 0.45f);
+	c[ImGuiCol_NavCursor] = Color(kYellow);
+	c[ImGuiCol_ModalWindowDimBg] = Color(kNavy, 0.6f);
+}
 
 void ApplyStyle(float scale)
 {
 	ImGuiStyle &style = ImGui::GetStyle();
 	style = ImGuiStyle();
-	ImGui::StyleColorsDark(&style);
+	ApplyColors(style);
 
-	style.WindowRounding = 6.0f;
-	style.ChildRounding = 4.0f;
-	style.FrameRounding = 4.0f;
-	style.PopupRounding = 4.0f;
-	style.GrabRounding = 4.0f;
-	style.WindowPadding = ImVec2(12.0f, 12.0f);
-	style.FramePadding = ImVec2(8.0f, 4.0f);
-	style.ItemSpacing = ImVec2(8.0f, 6.0f);
+	style.WindowRounding = 12.0f;
+	style.ChildRounding = 8.0f;
+	style.FrameRounding = 8.0f;
+	style.PopupRounding = 8.0f;
+	style.GrabRounding = 8.0f;
+	style.TabRounding = 8.0f;
+	style.ScrollbarRounding = 8.0f;
+	style.WindowBorderSize = 2.0f;
+	style.PopupBorderSize = 2.0f;
+	style.FrameBorderSize = 0.0f;
+	style.TabBorderSize = 0.0f;
+	style.WindowPadding = ImVec2(18.0f, 14.0f);
+	style.FramePadding = ImVec2(10.0f, 5.0f);
+	style.ItemSpacing = ImVec2(10.0f, 8.0f);
+	style.ItemInnerSpacing = ImVec2(8.0f, 6.0f);
+	style.SeparatorTextBorderSize = 2.0f;
+	style.SeparatorTextPadding = ImVec2(0.0f, 4.0f);
 	style.ScaleAllSizes(scale);
 
 	style.FontSizeBase = kBaseFontSize;
 	style._NextFrameFontSizeBase = kBaseFontSize;
 	style.FontScaleDpi = scale;
 	s_styleScale = scale;
+}
+
+void LoadFont()
+{
+	ImFontConfig config;
+	config.FontDataOwnedByAtlas = false;
+	snprintf(config.Name, sizeof(config.Name), "Fredoka SemiBold");
+	ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<unsigned char *>(kNativeUiFontData), (int)sizeof(kNativeUiFontData), kBaseFontSize, &config);
 }
 
 void UpdateStyleScale()
@@ -90,7 +179,7 @@ void UpdateStyleScale()
 	SDL_GetWindowSize(s_window, &width, &height);
 	if (height > kReferenceHeight)
 	{
-		// Quarter steps keep the font from re-baking on every pixel of a window drag.
+		// Quarter steps keep the style from rebuilding on every pixel of a window drag.
 		scale *= SDL_floorf((height / kReferenceHeight) * 4.0f) / 4.0f;
 	}
 
@@ -98,6 +187,16 @@ void UpdateStyleScale()
 	{
 		ApplyStyle(scale);
 	}
+}
+
+void SetMenuOpen(bool open)
+{
+	if (s_menuOpen == open)
+	{
+		return;
+	}
+	s_menuOpen = open;
+	Platform_UpdateCursorVisibility();
 }
 
 void CommitVideoSettings()
@@ -122,22 +221,20 @@ void HelpTooltip(const char *text)
 	ImGui::SetItemTooltip("%s", text);
 }
 
-void DrawVideoWindow()
+void SectionHeading(const char *text)
 {
-	const ImGuiViewport *viewport = ImGui::GetMainViewport();
-	ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), viewport->WorkSize);
-	if (!ImGui::Begin("Video Settings", &s_showVideoWindow, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse))
-	{
-		ImGui::End();
-		return;
-	}
+	ImGui::PushStyleColor(ImGuiCol_Text, Color(kYellow));
+	ImGui::SeparatorText(text);
+	ImGui::PopStyleColor();
+}
 
+void DrawVideoTab()
+{
 	NativeVideoSettings &video = g_settings.video;
 	bool changed = false;
-	const float comboWidth = ImGui::GetFontSize() * 14.0f;
+	const float comboWidth = ImGui::GetFontSize() * 12.0f;
 
-	ImGui::SeparatorText("Display");
+	SectionHeading("Display");
 
 	ImGui::SetNextItemWidth(comboWidth);
 	changed |= ImGui::Combo("Display mode", &video.displayMode, kDisplayModeNames, NATIVE_DISPLAY_COUNT);
@@ -168,7 +265,7 @@ void DrawVideoWindow()
 	ImGui::EndDisabled();
 	ImGui::SetItemTooltip(video.displayMode == NATIVE_DISPLAY_WINDOWED ? "You can also drag the window edges to any size." : "Switch to windowed mode to pick a window size.");
 
-	ImGui::SeparatorText("Picture");
+	SectionHeading("Picture");
 
 	ImGui::SetNextItemWidth(comboWidth);
 	changed |= ImGui::Combo("Aspect ratio", &video.aspectMode, kAspectModeNames, NATIVE_ASPECT_COUNT);
@@ -186,11 +283,11 @@ void DrawVideoWindow()
 	changed |= CheckboxInt("Texture filtering", &video.textureFiltering);
 	HelpTooltip("Bilinear filtering of in-game textures. Not part of the original look.");
 
-	ImGui::SeparatorText("Overlay");
+	SectionHeading("Overlay");
 	changed |= CheckboxInt("Show FPS counter", &video.showFps);
 
-	ImGui::Separator();
-	if (ImGui::Button("Reset to defaults"))
+	ImGui::Spacing();
+	if (ImGui::Button("Reset video settings"))
 	{
 		const int keepWidth = video.windowWidth;
 		const int keepHeight = video.windowHeight;
@@ -203,61 +300,85 @@ void DrawVideoWindow()
 	}
 	HelpTooltip("Restores every video option except the window size.");
 
-	ImGui::TextDisabled("Changes apply and save immediately.");
-
 	if (changed)
 	{
 		CommitVideoSettings();
 	}
-
-	ImGui::End();
 }
 
-void DrawAboutWindow()
+void DrawAboutTab()
 {
-	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
-	if (ImGui::Begin("About CTR Native", &s_showAboutWindow, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse))
+	ImGui::Text("CTR Native %s", CTR_NATIVE_VERSION);
+	ImGui::TextDisabled("Build %s", CTR_NATIVE_BUILD_ID);
+	ImGui::Spacing();
+	ImGui::TextWrapped("A native PC port of Crash Team Racing (NTSC-U), built on the CTR-ModSDK decompilation.");
+	ImGui::Spacing();
+	ImGui::TextDisabled("Settings file");
+	ImGui::TextWrapped("%s", NativeSettings_GetPath());
+	ImGui::Spacing();
+	ImGui::TextDisabled("Dear ImGui %s  |  Fredoka font (SIL OFL 1.1)", IMGUI_VERSION);
+	ImGui::Spacing();
+	if (ImGui::Button("Quit game"))
 	{
-		ImGui::Text("CTR Native %s (%s)", CTR_NATIVE_VERSION, CTR_NATIVE_BUILD_ID);
-		ImGui::TextDisabled("Native PC port of Crash Team Racing (NTSC-U).");
-		ImGui::TextDisabled("Settings file: %s", NativeSettings_GetPath());
-		ImGui::TextDisabled("Dear ImGui %s", IMGUI_VERSION);
+		SDL_Event quit = {};
+		quit.type = SDL_EVENT_QUIT;
+		SDL_PushEvent(&quit);
 	}
-	ImGui::End();
 }
 
-void DrawMenuBar()
+void DrawTitle()
 {
-	if (!ImGui::BeginMainMenuBar())
-	{
-		return;
-	}
+	ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * kTitleFontScale);
+	ImGui::PushStyleColor(ImGuiCol_Text, Color(kYellow));
+	ImGui::TextUnformatted("CTR");
+	ImGui::PopStyleColor();
+	ImGui::SameLine();
+	ImGui::PushStyleColor(ImGuiCol_Text, Color(kOrange));
+	ImGui::TextUnformatted("NATIVE");
+	ImGui::PopStyleColor();
+	ImGui::PopFont();
 
-	if (ImGui::BeginMenu("CTR Native"))
-	{
-		ImGui::MenuItem("About", nullptr, &s_showAboutWindow);
-		ImGui::Separator();
-		if (ImGui::MenuItem("Quit"))
-		{
-			SDL_Event quit = {};
-			quit.type = SDL_EVENT_QUIT;
-			SDL_PushEvent(&quit);
-		}
-		ImGui::EndMenu();
-	}
-
-	if (ImGui::BeginMenu("Settings"))
-	{
-		ImGui::MenuItem("Video", nullptr, &s_showVideoWindow);
-		ImGui::EndMenu();
-	}
-
-	const char *hint = "F1 closes this menu";
-	const float hintWidth = ImGui::CalcTextSize(hint).x + ImGui::GetStyle().ItemSpacing.x * 2.0f;
-	ImGui::SameLine(ImGui::GetWindowWidth() - hintWidth);
+	const char *hint = "F1 / Esc to close";
+	ImGui::SameLine();
+	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(hint).x);
+	ImGui::AlignTextToFramePadding();
 	ImGui::TextDisabled("%s", hint);
+}
 
-	ImGui::EndMainMenuBar();
+void DrawMainWindow()
+{
+	const ImGuiViewport *viewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+	ImGui::SetNextWindowSizeConstraints(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), viewport->WorkSize);
+
+	bool open = true;
+	const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar;
+	if (ImGui::Begin("CTR Native", &open, flags))
+	{
+		DrawTitle();
+		ImGui::Spacing();
+
+		if (ImGui::BeginTabBar("##sections"))
+		{
+			if (ImGui::BeginTabItem("Video"))
+			{
+				DrawVideoTab();
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("About"))
+			{
+				DrawAboutTab();
+				ImGui::EndTabItem();
+			}
+			ImGui::EndTabBar();
+		}
+	}
+	ImGui::End();
+
+	if (!open)
+	{
+		SetMenuOpen(false);
+	}
 }
 
 void DrawFpsOverlay()
@@ -265,18 +386,24 @@ void DrawFpsOverlay()
 	const ImGuiIO &io = ImGui::GetIO();
 	const ImGuiViewport *viewport = ImGui::GetMainViewport();
 	const float pad = ImGui::GetFontSize() * 0.6f;
-	const float top = viewport->WorkPos.y + pad;
 
-	ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - pad, top), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-	ImGui::SetNextWindowBgAlpha(0.45f);
+	ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x - pad, viewport->WorkPos.y + pad), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+	ImGui::SetNextWindowBgAlpha(0.7f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad * 0.5f));
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 	const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
 	                               ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoMove;
 	if (ImGui::Begin("##fps", nullptr, flags))
 	{
 		const float fps = io.Framerate;
-		ImGui::Text("%.1f FPS  %.1f ms", fps, fps > 0.0f ? 1000.0f / fps : 0.0f);
+		ImGui::PushStyleColor(ImGuiCol_Text, Color(kYellow));
+		ImGui::Text("%.1f FPS", fps);
+		ImGui::PopStyleColor();
+		ImGui::SameLine();
+		ImGui::TextDisabled("%.1f ms", fps > 0.0f ? 1000.0f / fps : 0.0f);
 	}
 	ImGui::End();
+	ImGui::PopStyleVar(2);
 }
 
 void UpdateInputCapture()
@@ -307,6 +434,7 @@ extern "C" int NativeUI_Init(SDL_Window *window, SDL_GLContext context)
 	io.LogFilename = nullptr;
 
 	s_window = window;
+	LoadFont();
 	UpdateStyleScale();
 	UpdateInputCapture();
 
@@ -365,15 +493,7 @@ extern "C" void NativeUI_Render(void)
 
 	if (s_menuOpen)
 	{
-		DrawMenuBar();
-		if (s_showVideoWindow)
-		{
-			DrawVideoWindow();
-		}
-		if (s_showAboutWindow)
-		{
-			DrawAboutWindow();
-		}
+		DrawMainWindow();
 	}
 
 	if (g_settings.video.showFps)
@@ -392,9 +512,5 @@ extern "C" int NativeUI_IsMenuOpen(void)
 
 extern "C" void NativeUI_ToggleMenu(void)
 {
-	s_menuOpen = !s_menuOpen;
-	if (s_menuOpen && !s_showVideoWindow && !s_showAboutWindow)
-	{
-		s_showVideoWindow = true;
-	}
+	SetMenuOpen(!s_menuOpen);
 }

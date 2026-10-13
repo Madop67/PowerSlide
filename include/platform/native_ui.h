@@ -19,6 +19,9 @@ void NativeUI_Render(void);
 int NativeUI_IsMenuOpen(void);
 void NativeUI_ToggleMenu(void);
 
+// Platform callback: shows the cursor while the menu is open, hides it in fullscreen otherwise.
+void Platform_UpdateCursorVisibility(void);
+
 #ifdef __cplusplus
 }
 #endif
