@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CTR-Native C)
+project(CTR-Native C CXX)
 include(CheckCCompilerFlag)
 
 set(CTR_NATIVE_VERSION "0.1.0-beta.7.1")
@@ -82,6 +82,34 @@ set(SDL_X11_XSCRNSAVER OFF CACHE BOOL "" FORCE)
 set(SDL_X11_XTEST OFF CACHE BOOL "" FORCE)
 add_subdirectory(externals/SDL)
 
+# In-game settings UI: Dear ImGui is C++, so it builds as its own library and the
+# game code stays C17. Only platform/native_ui.cpp talks to ImGui.
+add_library(ctr_native_ui STATIC
+    platform/native_ui.cpp
+    externals/imgui/imgui.cpp
+    externals/imgui/imgui_draw.cpp
+    externals/imgui/imgui_tables.cpp
+    externals/imgui/imgui_widgets.cpp
+    externals/imgui/backends/imgui_impl_sdl3.cpp
+    externals/imgui/backends/imgui_impl_opengl3.cpp
+)
+set_target_properties(ctr_native_ui PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+target_include_directories(ctr_native_ui PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/externals/imgui
+    ${CMAKE_SOURCE_DIR}/externals/imgui/backends
+)
+target_compile_definitions(ctr_native_ui PRIVATE
+    IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+    CTR_NATIVE_VERSION=\"${CTR_NATIVE_VERSION}\"
+    CTR_NATIVE_BUILD_ID=\"${CTR_NATIVE_BUILD_ID}\"
+)
+target_link_libraries(ctr_native_ui PUBLIC SDL3::SDL3 ${CMAKE_DL_LIBS})
+
 # CTR Native
 add_executable(ctr_native main.c)
 set_target_properties(ctr_native PROPERTIES
@@ -127,9 +155,9 @@ else()
         ctr_native_add_label_warning_if_supported(ctr_native -Wc23-extensions CTR_HAS_WC23_EXTENSIONS)
     endif()
 endif()
-target_link_libraries(ctr_native SDL3::SDL3)
+target_link_libraries(ctr_native ctr_native_ui SDL3::SDL3)
 if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    target_link_options(ctr_native PRIVATE -static-libgcc)
+    target_link_options(ctr_native PRIVATE -static-libgcc -static-libstdc++)
 endif()
 if(MINGW)
     target_link_options(ctr_native PRIVATE -static)

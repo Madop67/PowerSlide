@@ -24,6 +24,7 @@
 #include "platform/native_perf.h"
 #include "platform/native_replay_scheduler.h"
 #include "platform/native_savestate.h"
+#include "platform/native_settings.h"
 
 #include <platform.h>
 
@@ -62,6 +63,7 @@
 #include "platform/native_replay_scheduler.c"
 #include "platform/native_renderer.c"
 #include "platform/native_savestate.c"
+#include "platform/native_settings.c"
 #include "platform/native_state.c"
 #include "platform/native_str.c"
 
@@ -182,6 +184,8 @@ int main(int argc, char *argv[])
 		return NativeConsole_Return(1);
 	}
 #endif
+
+	NativeSettings_Load(NativeAssets_GetBaseDir());
 
 #ifdef USE_16BY9
 	printf("[CTR Native] Widescreen\n");

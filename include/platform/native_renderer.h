@@ -3,7 +3,8 @@
 
 #include <platform/native_renderer_types.h>
 
-int NativeRenderer_InitialiseRender(char *windowName, int width, int height, int fullscreen);
+// aspectWidth:aspectHeight is the presented picture's shape; the window may be any size.
+int NativeRenderer_InitialiseRender(char *windowName, int aspectWidth, int aspectHeight, int windowWidth, int windowHeight, int fullscreen);
 int NativeRenderer_InitialisePSX(void);
 void NativeRenderer_Shutdown(void);
 void NativeRenderer_ResetDevice(void);

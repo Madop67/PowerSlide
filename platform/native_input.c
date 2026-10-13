@@ -1,4 +1,5 @@
 #include <platform/native_input.h>
+#include <platform/native_ui.h>
 
 #include <macros.h>
 #include "psx/libpad.h"
@@ -787,13 +788,23 @@ void Platform_InputUpdate(void)
 	}
 
 	SDL_PumpEvents();
-	u16 keyboardButtons = NativeInput_KeyboardSuppressed() ? 0xffff : NativeInput_ReadKeyboard();
+	// While the settings menu is open the game sees released buttons and centred
+	// sticks, but pads stay connected so it does not raise a disconnect pause.
+	const s32 menuCapturesInput = NativeUI_IsMenuOpen();
+	u16 keyboardButtons = (menuCapturesInput || NativeInput_KeyboardSuppressed()) ? 0xffff : NativeInput_ReadKeyboard();
 
 	for (s32 slot = 0; slot < NATIVE_INPUT_MAX_CONTROLLERS; slot++)
 	{
 		NativeInput_ResetSnapshot(slot);
 		NativeInput_ApplyController(slot);
 		NativeInput_ApplyKeyboard(slot, keyboardButtons);
+
+		if (menuCapturesInput)
+		{
+			struct PlatformInputPadSnapshot *snapshot = &s_controllers[slot].snapshot;
+			NativeInput_SetSnapshotButtons(snapshot, 0xffff);
+			memset(snapshot->analog, 0x80, sizeof(snapshot->analog));
+		}
 	}
 	NativeInput_WritePadBus();
 }

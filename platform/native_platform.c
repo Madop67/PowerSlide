@@ -11,6 +11,8 @@
 #include "platform/native_renderer.h"
 #include "platform/native_replay_scheduler.h"
 #include "platform/native_savestate.h"
+#include "platform/native_settings.h"
+#include "platform/native_ui.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -93,6 +95,14 @@ internal void Platform_HandleWindowResize(int width, int height)
 {
 	g_windowWidth = width;
 	g_windowHeight = height;
+
+	// Remember manual windowed resizes; fullscreen sizes belong to the display.
+	if (g_settings.video.displayMode == NATIVE_DISPLAY_WINDOWED)
+	{
+		g_settings.video.windowWidth = width;
+		g_settings.video.windowHeight = height;
+	}
+
 	NativeRenderer_ResetDevice();
 }
 
@@ -103,7 +113,7 @@ internal void Platform_UpdateCursorVisibility(void)
 		return;
 	}
 
-	if ((SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN) != 0)
+	if (((SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN) != 0) && !NativeUI_IsMenuOpen())
 	{
 		SDL_HideCursor();
 	}
@@ -113,14 +123,49 @@ internal void Platform_UpdateCursorVisibility(void)
 	}
 }
 
-internal void Platform_HandleFullscreenToggle(void)
+void Platform_ApplyVideoSettings(void)
 {
-	int fullscreen = (SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN) != 0;
+	const struct NativeVideoSettings *video = &g_settings.video;
 
-	SDL_SetWindowFullscreen(g_window, fullscreen == 0);
+	g_cfg_bilinearFiltering = video->textureFiltering;
+
+	if (g_window == NULL)
+	{
+		return;
+	}
+
+	const int wantFullscreen = video->displayMode == NATIVE_DISPLAY_FULLSCREEN;
+	const int isFullscreen = (SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN) != 0;
+
+	if (wantFullscreen != isFullscreen)
+	{
+		SDL_SetWindowFullscreen(g_window, wantFullscreen);
+		SDL_SyncWindow(g_window);
+	}
+
+	if (!wantFullscreen && (video->windowWidth > 0) && (video->windowHeight > 0))
+	{
+		int width = 0;
+		int height = 0;
+		SDL_GetWindowSize(g_window, &width, &height);
+		if ((width != video->windowWidth) || (height != video->windowHeight))
+		{
+			SDL_SetWindowSize(g_window, video->windowWidth, video->windowHeight);
+			SDL_SetWindowPosition(g_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+			SDL_SyncWindow(g_window);
+		}
+	}
+
 	SDL_GetWindowSize(g_window, &g_windowWidth, &g_windowHeight);
 	Platform_UpdateCursorVisibility();
 	NativeRenderer_ResetDevice();
+}
+
+internal void Platform_HandleFullscreenToggle(void)
+{
+	g_settings.video.displayMode = (g_settings.video.displayMode == NATIVE_DISPLAY_FULLSCREEN) ? NATIVE_DISPLAY_WINDOWED : NATIVE_DISPLAY_FULLSCREEN;
+	Platform_ApplyVideoSettings();
+	NativeSettings_Save();
 }
 
 internal void Platform_UpdateHostAltKeyState(const s32 key, const s8 down)
@@ -183,11 +228,6 @@ internal void Platform_HandleKey(int key, char down)
 	{
 		switch (key)
 		{
-		case SDL_SCANCODE_F1:
-			g_dbg_wireframeMode ^= 1;
-			Platform_LogWarn("[CTR Native] wireframe mode: %d\n", g_dbg_wireframeMode);
-			break;
-
 		case SDL_SCANCODE_F2:
 			g_dbg_texturelessMode ^= 1;
 			Platform_LogWarn("[CTR Native] textureless mode: %d\n", g_dbg_texturelessMode);
@@ -217,7 +257,8 @@ internal void Platform_HandleKey(int key, char down)
 			Platform_TakeScreenshot();
 			break;
 		case SDL_SCANCODE_F3:
-			g_cfg_bilinearFiltering ^= 1;
+			g_settings.video.textureFiltering ^= 1;
+			g_cfg_bilinearFiltering = g_settings.video.textureFiltering;
 			Platform_LogWarn("[CTR Native] filtering mode: %d\n", g_cfg_bilinearFiltering);
 			break;
 		case SDL_SCANCODE_F5:
@@ -249,7 +290,13 @@ void Platform_Init(const char *title, int width, int height)
 
 	s_platformInitialized = 1;
 
-	if (!NativeRenderer_InitialiseRender(windowName, width, height, 0))
+	// width x height is the design size and fixes the picture's aspect; the saved window size wins.
+	const struct NativeVideoSettings *video = &g_settings.video;
+	const int windowWidth = (video->windowWidth > 0) ? video->windowWidth : width;
+	const int windowHeight = (video->windowHeight > 0) ? video->windowHeight : height;
+	const int fullscreen = video->displayMode == NATIVE_DISPLAY_FULLSCREEN;
+
+	if (!NativeRenderer_InitialiseRender(windowName, width, height, windowWidth, windowHeight, fullscreen))
 	{
 		Platform_LogError("[CTR Native] Failed to initialise window\n");
 		Platform_Shutdown();
@@ -263,8 +310,17 @@ void Platform_Init(const char *title, int width, int height)
 		return;
 	}
 
+	if (!NativeUI_Init(g_window, SDL_GL_GetCurrentContext()))
+	{
+		Platform_LogWarn("[CTR Native] Settings menu unavailable (UI init failed)\n");
+	}
+	else
+	{
+		Platform_Log("[CTR Native] Press F1 for the settings menu\n");
+	}
+
 	atexit(Platform_Shutdown);
-	Platform_UpdateCursorVisibility();
+	Platform_ApplyVideoSettings();
 	Platform_InputInit();
 }
 
@@ -281,8 +337,10 @@ void Platform_Shutdown(void)
 	NativePerf_Shutdown();
 	NativeReplayScheduler_Shutdown();
 #endif
+	NativeSettings_Save();
 	Platform_InputShutdown();
 	NativeAudio_Shutdown();
+	NativeUI_Shutdown();
 	NativeRenderer_Shutdown();
 
 	if (g_window != NULL)
@@ -358,6 +416,7 @@ void Platform_EndScene(void)
 		{
 			NativeRenderer_PresentVRAMDisplay();
 		}
+		NativeUI_Render();
 		NativeRenderer_EndGpuFrame();
 		NativeRenderer_SwapWindow();
 		s_pinnedVramDisplayFrames--;
@@ -373,6 +432,7 @@ void Platform_EndScene(void)
 	// effects without forcing a CPU readback.
 	NativeRenderer_StoreFrameBuffer(activeDispEnv.disp.x, activeDispEnv.disp.y, activeDispEnv.disp.w, activeDispEnv.disp.h);
 	NativeRenderer_PresentVRAMRect(activeDispEnv.disp.x, activeDispEnv.disp.y, activeDispEnv.disp.w, activeDispEnv.disp.h);
+	NativeUI_Render();
 	NativeRenderer_EndGpuFrame();
 	NativeRenderer_SwapWindow();
 	NativePerf_EndScope(NATIVE_PERF_BUCKET_PLATFORM_END_SCENE);
@@ -425,6 +485,8 @@ void Platform_PollHostEvents(void)
 
 	while (SDL_PollEvent(&event))
 	{
+		NativeUI_ProcessEvent(&event);
+
 		switch (event.type)
 		{
 		case SDL_EVENT_GAMEPAD_ADDED:
@@ -454,6 +516,27 @@ void Platform_PollHostEvents(void)
 
 			Platform_UpdateHostAltKeyState(key, down);
 
+			if (key == SDL_SCANCODE_F1)
+			{
+				if ((down != 0) && (event.key.repeat == 0))
+				{
+					if ((event.key.mod & SDL_KMOD_SHIFT) != 0)
+					{
+#ifdef CTR_INTERNAL
+						g_dbg_wireframeMode ^= 1;
+						Platform_LogWarn("[CTR Native] wireframe mode: %d\n", g_dbg_wireframeMode);
+#endif
+					}
+					else
+					{
+						NativeUI_ToggleMenu();
+						Platform_UpdateCursorVisibility();
+						Platform_Log("[CTR Native] Settings menu %s\n", NativeUI_IsMenuOpen() ? "opened" : "closed");
+					}
+				}
+				break;
+			}
+
 			if (key == SDL_SCANCODE_F11)
 			{
 				if ((down != 0) && (event.key.repeat == 0))
@@ -469,6 +552,12 @@ void Platform_PollHostEvents(void)
 				{
 					Platform_HandleFullscreenToggle();
 				}
+				break;
+			}
+
+			// The open menu owns the keyboard; game and debug keys wait until it closes.
+			if (NativeUI_IsMenuOpen())
+			{
 				break;
 			}
 

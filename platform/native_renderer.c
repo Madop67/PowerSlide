@@ -13,6 +13,7 @@
 #include "platform/native_log.h"
 #include "platform/native_perf.h"
 #include "platform/native_renderer.h"
+#include "platform/native_settings.h"
 
 #include <assert.h>
 #include <string.h>
@@ -107,6 +108,9 @@ struct NativeRenderTarget
 
 global_variable struct NativeRenderTarget s_mainRenderTarget;
 global_variable struct NativeRenderTarget s_offscreenRenderTarget;
+// RGBA copy of the displayed VRAM region, used only for smooth (linear) presentation scaling.
+global_variable struct NativeRenderTarget s_presentRenderTarget;
+global_variable b32 s_presentRenderTargetReady;
 
 global_variable TextureID s_whiteTexture = (TextureID)-1;
 global_variable TextureID s_lastBoundTexture = (TextureID)-1;
@@ -238,11 +242,11 @@ internal int NativeRenderer_InitialiseGLExt(void)
 	return 1;
 }
 
-int NativeRenderer_InitialiseRender(char *windowName, int width, int height, int fullscreen)
+int NativeRenderer_InitialiseRender(char *windowName, int aspectWidth, int aspectHeight, int windowWidth, int windowHeight, int fullscreen)
 {
-	g_windowWidth = width;
-	g_windowHeight = height;
-	NativeRenderer_SetPresentationAspect(width, height);
+	g_windowWidth = windowWidth;
+	g_windowHeight = windowHeight;
+	NativeRenderer_SetPresentationAspect(aspectWidth, aspectHeight);
 
 	// Due to debugging in fullscreen
 	SDL_SetHint(SDL_HINT_WINDOW_ALLOW_TOPMOST, "0");
@@ -272,6 +276,11 @@ void NativeRenderer_Shutdown(void)
 
 	NativeRenderer_DestroyRenderTarget(&s_mainRenderTarget);
 	NativeRenderer_DestroyRenderTarget(&s_offscreenRenderTarget);
+	if (s_presentRenderTargetReady)
+	{
+		NativeRenderer_DestroyRenderTarget(&s_presentRenderTarget);
+		s_presentRenderTargetReady = false;
+	}
 	glDeleteFramebuffers(1, &s_glVramFramebuffer);
 
 	NativeRenderer_DestroyTexture(s_vram.texture);
@@ -449,7 +458,10 @@ internal void NativeRenderer_SetPresentationAspect(int width, int height)
 
 internal void NativeRenderer_UpdatePresentationViewport(void)
 {
-	if ((g_windowWidth <= 0) || (g_windowHeight <= 0) || (s_presentAspectW <= 0) || (s_presentAspectH <= 0))
+	const struct NativeVideoSettings *video = &g_settings.video;
+
+	if ((g_windowWidth <= 0) || (g_windowHeight <= 0) || (s_presentAspectW <= 0) || (s_presentAspectH <= 0) ||
+	    (video->aspectMode == NATIVE_ASPECT_STRETCH))
 	{
 		s_presentViewport.x = 0;
 		s_presentViewport.y = 0;
@@ -464,6 +476,15 @@ internal void NativeRenderer_UpdatePresentationViewport(void)
 	if (viewportH > g_windowHeight)
 	{
 		viewportH = g_windowHeight;
+		viewportW = (viewportH * s_presentAspectW) / s_presentAspectH;
+	}
+
+	// Integer scaling snaps the picture height to a whole multiple of the displayed
+	// line count; the width follows the aspect, so it always still fits the window.
+	const int sourceLines = activeDispEnv.disp.h;
+	if (video->integerScaling && (sourceLines > 0) && (viewportH >= sourceLines))
+	{
+		viewportH = (viewportH / sourceLines) * sourceLines;
 		viewportW = (viewportH * s_presentAspectW) / s_presentAspectH;
 	}
 
@@ -2111,14 +2132,38 @@ void NativeRenderer_PresentVRAMRect(int displayX, int displayY, int displayW, in
 
 	NativeRenderer_UpdateVRAM();
 
-	NativeRenderer_SetViewPort(s_presentViewport.x, s_presentViewport.y, s_presentViewport.w, s_presentViewport.h);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 	NativeRenderer_SetScissorState(0);
 	NativeRenderer_EnableDepth(0);
 	NativeRenderer_SetBlendMode(BM_NONE);
 
-	NativeRenderer_DrawVRAMRegion(displayX, displayY, displayW, displayH);
+	if (g_settings.video.scaleFilter == NATIVE_SCALE_FILTER_SMOOTH)
+	{
+		// The present shader decodes packed 16-bit VRAM texels and must sample nearest.
+		// Smooth scaling decodes at source size into RGBA, then blits with linear filtering.
+		if (!s_presentRenderTargetReady)
+		{
+			NativeRenderer_InitRenderTarget(&s_presentRenderTarget);
+			s_presentRenderTargetReady = true;
+		}
+		NativeRenderer_EnsureRenderTarget(&s_presentRenderTarget, displayW, displayH);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, s_presentRenderTarget.framebuffer);
+		NativeRenderer_SetViewPort(0, 0, displayW, displayH);
+		NativeRenderer_DrawVRAMRegion(displayX, displayY, displayW, displayH);
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, s_presentRenderTarget.framebuffer);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+		glBlitFramebuffer(0, 0, displayW, displayH, s_presentViewport.x, s_presentViewport.y, s_presentViewport.x + s_presentViewport.w,
+		                  s_presentViewport.y + s_presentViewport.h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		NativeRenderer_SetViewPort(s_presentViewport.x, s_presentViewport.y, s_presentViewport.w, s_presentViewport.h);
+	}
+	else
+	{
+		NativeRenderer_SetViewPort(s_presentViewport.x, s_presentViewport.y, s_presentViewport.w, s_presentViewport.h);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		NativeRenderer_DrawVRAMRegion(displayX, displayY, displayW, displayH);
+	}
 	glBindVertexArray(0);
 
 	s_previousShader = (ShaderID)-1;
