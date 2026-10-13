@@ -13,6 +13,17 @@
 volatile int gCtrDebugSkipLevelGeometry = 0;
 #endif
 
+#if defined(CTR_NATIVE)
+#include <platform/native_gpu.h>
+
+// Widescreen edge anchoring tags the primitive memory the race HUD (and its 3D
+// models) is drawn into; menus and results screens stay centred.
+static b32 NativeHud_RaceHudActive(struct GameTracker *gGT)
+{
+	return ((gGT->hudFlags & HUD_FLAG_RACE_HUD) != 0) && ((gGT->gameMode1 & (MAIN_MENU | END_OF_RACE)) == 0);
+}
+#endif
+
 void MainFrame_RenderFrame(struct GameTracker *gGT, struct GamepadSystem *gGamepads)
 {
 	struct Level *lev = gGT->level1;
@@ -107,7 +118,20 @@ void MainFrame_RenderFrame(struct GameTracker *gGT, struct GamepadSystem *gGamep
 	MAINFRAME_PERF_END(NATIVE_PERF_BUCKET_MAINFRAME_EFFECTS);
 
 	MAINFRAME_PERF_BEGIN(NATIVE_PERF_BUCKET_MAINFRAME_EXECUTE_INSTANCES);
+#if defined(CTR_NATIVE)
+	{
+		// Only the HUD's 3D models (Wumpa, keys, relics) land in the HUD slots, so the
+		// world instances drawn here are unaffected by the anchor range.
+		void *instancesStart = gGT->backBuffer->primMem.cursor;
+		RenderBucket_ExecuteAllInstances(gGT);
+		if (NativeHud_RaceHudActive(gGT))
+		{
+			NativeGpu_AddHudAnchorRange(instancesStart, gGT->backBuffer->primMem.cursor);
+		}
+	}
+#else
 	RenderBucket_ExecuteAllInstances(gGT);
+#endif
 	MAINFRAME_PERF_END(NATIVE_PERF_BUCKET_MAINFRAME_EXECUTE_INSTANCES);
 
 	MAINFRAME_PERF_BEGIN(NATIVE_PERF_BUCKET_MAINFRAME_EFFECTS);
@@ -136,7 +160,16 @@ void MainFrame_RenderFrame(struct GameTracker *gGT, struct GamepadSystem *gGamep
 
 		if (((gGT->hudFlags & HUD_FLAG_RACE_HUD) != 0) && (gGT->numPlyrCurrGame > 1))
 		{
+#if defined(CTR_NATIVE)
+			void *wumpaStart = gGT->backBuffer->primMem.cursor;
 			UI_RenderFrame_Wumpa3D_2P3P4P(gGT);
+			if (NativeHud_RaceHudActive(gGT))
+			{
+				NativeGpu_AddHudAnchorRange(wumpaStart, gGT->backBuffer->primMem.cursor);
+			}
+#else
+			UI_RenderFrame_Wumpa3D_2P3P4P(gGT);
+#endif
 		}
 
 		if (((gGT->renderFlags & RENDER_FLAG_MULTIPLAYER_DECALS) != 0) && (gGT->numPlyrCurrGame > 1))
@@ -515,6 +548,9 @@ void RenderAllHUD(struct GameTracker *gGT)
 				    // cooldown after end of race not expired
 				    (gGT->timerEndOfRaceVS != 0))
 				{
+#if defined(CTR_NATIVE)
+					void *hudStart = gGT->backBuffer->primMem.cursor;
+#endif
 					// not crystal challenge
 					if ((gameMode1 & CRYSTAL_CHALLENGE) == 0)
 					{
@@ -526,6 +562,9 @@ void RenderAllHUD(struct GameTracker *gGT)
 					{
 						UI_RenderFrame_CrystChall();
 					}
+#if defined(CTR_NATIVE)
+					NativeGpu_AddHudAnchorRange(hudStart, gGT->backBuffer->primMem.cursor);
+#endif
 				}
 
 				// drawing end of race
@@ -600,7 +639,13 @@ void RenderAllHUD(struct GameTracker *gGT)
 					// if any transition is over
 					if (gGT->pushBuffer_UI.fadeFromBlack_currentValue > 0xfff)
 					{
+#if defined(CTR_NATIVE)
+						void *hudStart = gGT->backBuffer->primMem.cursor;
 						UI_RenderFrame_AdvHub();
+						NativeGpu_AddHudAnchorRange(hudStart, gGT->backBuffer->primMem.cursor);
+#else
+						UI_RenderFrame_AdvHub();
+#endif
 					}
 				}
 

@@ -23,9 +23,16 @@ int NativeGpu_GetStateSize(void);
 int NativeGpu_CaptureState(void *dst, int dstSize);
 int NativeGpu_RestoreState(const void *src, int srcSize);
 
-// Widescreen HUD: registers the ordering table of swapchain buffer `bufferIndex`
-// (otBytes long) and the slot in it that the HUD links into. Primitives reached
-// through that slot are drawn squeezed to 3/4 width around the screen centre.
-void NativeGpu_SetHudOT(int bufferIndex, const void *otBase, int otBytes, const void *hudSlot);
+// Widescreen layout, set once per frame from MainFrame_ResetDB. Registers the
+// ordering table of swapchain buffer `bufferIndex` (otBytes long) and its HUD
+// slots [hudFirst, hudEnd). Primitives reached through those slots -- and, when
+// menuMode is set, primitives in narrower-than-screen 3D viewports -- are drawn
+// squeezed to 3/4 width. anchorRegions is 2 when the race HUD is laid out per
+// left/right screen half (3-4 players), else 1. Clears the anchor ranges.
+void NativeGpu_SetWidescreenFrame(int bufferIndex, const void *otBase, int otBytes, const void *hudFirst, const void *hudEnd, int menuMode,
+                                  int anchorRegions);
+// Marks primitive memory [start, end) as race HUD, which edge anchoring may move
+// to the screen (or split-screen half) edges.
+void NativeGpu_AddHudAnchorRange(const void *start, const void *end);
 
 #endif

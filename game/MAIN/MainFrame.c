@@ -98,8 +98,10 @@ void MainFrame_ResetDB(struct GameTracker *gGT)
 	db->otMem.uiOT = puVar3;
 
 #if defined(CTR_NATIVE)
-	// Widescreen HUD: tell the GPU layer which OT slot holds this frame's HUD.
-	NativeGpu_SetHudOT(gGT->swapchainIndex, (void *)otSwapchainDB, (int)(((u32)gGT->numPlyrCurrGame << 12) | 0x18u), puVar3);
+	// Widescreen layout: the HUD uses OT slots 1-5 (uiOT[0..4]); slot 0 belongs to the
+	// race flag and screen effects. 3-4 player races lay the HUD out per screen half.
+	NativeGpu_SetWidescreenFrame(gGT->swapchainIndex, (void *)otSwapchainDB, (int)(((u32)gGT->numPlyrCurrGame << 12) | 0x18u), puVar3,
+	                             (void *)((int)otSwapchainDB + 0x18), (gGT->gameMode1 & MAIN_MENU) != 0, (gGT->numPlyrCurrGame > 2) ? 2 : 1);
 
 	if (sdata->ptrPushBufferUI != 0)
 	{

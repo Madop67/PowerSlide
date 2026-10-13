@@ -52,6 +52,7 @@ constexpr WindowSizePreset kWindowSizes[] = {
 constexpr const char *kDisplayModeNames[NATIVE_DISPLAY_COUNT] = {"Windowed", "Fullscreen"};
 constexpr const char *kAspectModeNames[NATIVE_ASPECT_COUNT] = {"Original (4:3)", "Widescreen (16:9)", "Stretch to window"};
 constexpr const char *kScaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"Sharp (nearest)", "Smooth (bilinear)"};
+constexpr const char *kHudPositionNames[NATIVE_HUD_POSITION_COUNT] = {"Screen edges", "Centre (4:3)"};
 
 // CTR palette, taken from the retail menus: orange and yellow on deep blue.
 constexpr ImU32 Rgb(unsigned r, unsigned g, unsigned b)
@@ -296,6 +297,13 @@ void DrawVideoTab()
 	changed |= ImGui::Combo("Aspect ratio", &video.aspectMode, kAspectModeNames, NATIVE_ASPECT_COUNT);
 	HelpTooltip("Original keeps the 4:3 picture. Widescreen shows more of the world at 16:9, with the HUD kept in its original "
 	            "proportions in the centre 4:3 area. Stretch fills the window and distorts the image.");
+
+	ImGui::BeginDisabled(video.aspectMode != NATIVE_ASPECT_WIDESCREEN);
+	ImGui::SetNextItemWidth(comboWidth);
+	changed |= ImGui::Combo("HUD position", &video.hudPosition, kHudPositionNames, NATIVE_HUD_POSITION_COUNT);
+	ImGui::EndDisabled();
+	ImGui::SetItemTooltip("Widescreen only. Screen edges moves the race HUD out to the corners; centre keeps the original 4:3 layout. "
+	                      "Menus always stay centred.");
 
 	ImGui::BeginDisabled(video.aspectMode == NATIVE_ASPECT_STRETCH);
 	changed |= CheckboxInt("Integer scaling", &video.integerScaling);

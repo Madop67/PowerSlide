@@ -26,6 +26,14 @@ enum NativeAspectMode
 
 #define NATIVE_RENDER_SCALE_MAX 8
 
+// Widescreen race HUD placement.
+enum NativeHudPosition
+{
+	NATIVE_HUD_POSITION_EDGES = 0,
+	NATIVE_HUD_POSITION_CENTRE,
+	NATIVE_HUD_POSITION_COUNT
+};
+
 enum NativeScaleFilter
 {
 	NATIVE_SCALE_FILTER_SHARP = 0,
@@ -40,6 +48,7 @@ struct NativeVideoSettings
 	int windowWidth;
 	int windowHeight;
 	int aspectMode;
+	int hudPosition;
 	// Internal resolution multiplier for the main render target (1 = original).
 	int renderScale;
 	int integerScaling;

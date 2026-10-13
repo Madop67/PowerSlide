@@ -84,6 +84,8 @@ typedef struct
 	bool psxTexturedSemiTrans;
 	bool psxTextureOutputSTP;
 	bool psxDrawMaskSet;
+	// Widescreen: this split's scissor (a menu sub-viewport) is compressed like its vertices.
+	bool wideClip;
 
 	u16 startVertex;
 	u16 numVerts;
@@ -243,42 +245,74 @@ void DrawEnvOffset(float *ofsX, float *ofsY)
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-// Widescreen HUD. In widescreen the whole 4:3 frame is shown stretched to 16:9 and
-// the 3D projection is pre-compressed to match (PushBuffer_SetMatrixVP). The HUD is
-// not projected, so its primitives are compressed here instead, at draw time, which
-// leaves game memory (and savestates/replays) untouched.
+// Widescreen layout. In widescreen the whole 4:3 frame is shown stretched to 16:9
+// and full-screen 3D views are pre-compressed by the projection
+// (PushBuffer_SetMatrixVP). Everything else -- the HUD slots, and in menus the small
+// 3D preview windows -- is compressed here at draw time instead, which leaves game
+// memory (and savestates/replays) untouched. With edge anchoring, race HUD elements
+// then move back out towards the screen (or split-screen half) edges.
 
-#define NATIVE_HUD_OT_BUFFERS 2
+#define NATIVE_WIDE_OT_BUFFERS    2
+#define NATIVE_WIDE_ANCHOR_RANGES 8
 
-global_variable const u8 *s_hudOTBase[NATIVE_HUD_OT_BUFFERS];
-global_variable const u8 *s_hudOTEnd[NATIVE_HUD_OT_BUFFERS];
-global_variable const u8 *s_hudOTSlot[NATIVE_HUD_OT_BUFFERS];
-// Set while the OT walk is inside the HUD slot's primitive chain.
-global_variable b32 s_inHudOT;
-
-void NativeGpu_SetHudOT(int bufferIndex, const void *otBase, int otBytes, const void *hudSlot)
+struct NativeWideFrame
 {
-	if ((bufferIndex < 0) || (bufferIndex >= NATIVE_HUD_OT_BUFFERS))
+	const u8 *otBase[NATIVE_WIDE_OT_BUFFERS];
+	const u8 *otEnd[NATIVE_WIDE_OT_BUFFERS];
+	const u8 *hudFirst[NATIVE_WIDE_OT_BUFFERS];
+	const u8 *hudEnd[NATIVE_WIDE_OT_BUFFERS];
+	b32 menuMode;
+	s32 anchorRegions;
+	const u8 *anchorStart[NATIVE_WIDE_ANCHOR_RANGES];
+	const u8 *anchorEnd[NATIVE_WIDE_ANCHOR_RANGES];
+	s32 anchorCount;
+};
+
+global_variable struct NativeWideFrame s_wide;
+// Set while the OT walk is inside one of the HUD slots' primitive chains.
+global_variable b32 s_inHudOT;
+// Set while parsing a packet that lies in an anchor range (race HUD).
+global_variable b32 s_primAnchored;
+
+void NativeGpu_SetWidescreenFrame(int bufferIndex, const void *otBase, int otBytes, const void *hudFirst, const void *hudEnd, int menuMode,
+                                  int anchorRegions)
+{
+	if ((bufferIndex < 0) || (bufferIndex >= NATIVE_WIDE_OT_BUFFERS))
 	{
 		return;
 	}
-	s_hudOTBase[bufferIndex] = (const u8 *)otBase;
-	s_hudOTEnd[bufferIndex] = (const u8 *)otBase + otBytes;
-	s_hudOTSlot[bufferIndex] = (const u8 *)hudSlot;
+	s_wide.otBase[bufferIndex] = (const u8 *)otBase;
+	s_wide.otEnd[bufferIndex] = (const u8 *)otBase + otBytes;
+	s_wide.hudFirst[bufferIndex] = (const u8 *)hudFirst;
+	s_wide.hudEnd[bufferIndex] = (const u8 *)hudEnd;
+	s_wide.menuMode = menuMode != 0;
+	s_wide.anchorRegions = (anchorRegions == 2) ? 2 : 1;
+	s_wide.anchorCount = 0;
+}
+
+void NativeGpu_AddHudAnchorRange(const void *start, const void *end)
+{
+	if ((s_wide.anchorCount >= NATIVE_WIDE_ANCHOR_RANGES) || (start == NULL) || (end <= start))
+	{
+		return;
+	}
+	s_wide.anchorStart[s_wide.anchorCount] = (const u8 *)start;
+	s_wide.anchorEnd[s_wide.anchorCount] = (const u8 *)end;
+	s_wide.anchorCount++;
 }
 
 // Called for every zero-length packet in the walk: OT slots are the only
 // zero-length nodes, and each one starts the chain of a new slot.
 internal void NativeGpu_UpdateHudRegion(const u8 *packet)
 {
-	for (int i = 0; i < NATIVE_HUD_OT_BUFFERS; i++)
+	for (int i = 0; i < NATIVE_WIDE_OT_BUFFERS; i++)
 	{
-		if ((s_hudOTSlot[i] != NULL) && (packet == s_hudOTSlot[i]))
+		if ((packet >= s_wide.hudFirst[i]) && (packet < s_wide.hudEnd[i]))
 		{
 			s_inHudOT = true;
 			return;
 		}
-		if ((packet >= s_hudOTBase[i]) && (packet < s_hudOTEnd[i]))
+		if ((packet >= s_wide.otBase[i]) && (packet < s_wide.otEnd[i]))
 		{
 			s_inHudOT = false;
 			return;
@@ -286,9 +320,35 @@ internal void NativeGpu_UpdateHudRegion(const u8 *packet)
 	}
 }
 
+internal b32 NativeGpu_IsAnchoredPacket(const u8 *packet)
+{
+	for (int i = 0; i < s_wide.anchorCount; i++)
+	{
+		if ((packet >= s_wide.anchorStart[i]) && (packet < s_wide.anchorEnd[i]))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+internal b32 NativeGpu_ClipIsSubViewport(const RECT16 *clip)
+{
+	return (clip->w > 0) && (clip->w < activeDispEnv.disp.w);
+}
+
 internal b32 NativeGpu_HudSqueezeActive(void)
 {
-	return s_inHudOT && activeDrawEnv.dfe && NativeSettings_WidescreenActive();
+	if (!activeDrawEnv.dfe || !NativeSettings_WidescreenActive())
+	{
+		return false;
+	}
+	if (s_inHudOT)
+	{
+		return true;
+	}
+	// Menu 3D preview windows skip the projection change and are squeezed with their frames.
+	return s_wide.menuMode && NativeGpu_ClipIsSubViewport(&activeDrawEnv.clip);
 }
 
 internal s16 NativeGpu_SqueezeHudX(int x, int centerX)
@@ -296,14 +356,48 @@ internal s16 NativeGpu_SqueezeHudX(int x, int centerX)
 	return (s16)(centerX + (int)SDL_floorf((f32)(x - centerX) * 0.75f + 0.5f));
 }
 
-// Compresses a primitive's vertices to 3/4 width around the screen centre.
-// Primitives spanning the full width (fades, backgrounds) keep covering it.
-internal void NativeGpu_SqueezeHudVertices(GrVertex *vertex, int count)
+// Picks the squeeze centre and edge-anchor shift for a primitive spanning
+// [minX, maxX]. Returns false for full-width primitives (fades, backgrounds),
+// which keep covering the screen.
+internal b32 NativeGpu_WideLayout(int minX, int maxX, int *centerX, int *shift)
 {
 	int width;
 	int height;
 	DrawEnvDimensionsInt(&width, &height);
 
+	if ((minX <= 0) && (maxX >= width - 1))
+	{
+		return false;
+	}
+
+	*centerX = width / 2;
+	*shift = 0;
+
+	if (s_inHudOT && s_primAnchored && (g_settings.video.hudPosition == NATIVE_HUD_POSITION_EDGES))
+	{
+		// Left and right thirds of the screen (or of each split-screen half) move out by
+		// the 1/8 of width that the squeeze took away; the middle stays centred.
+		const int mid = (minX + maxX) / 2;
+		const int regionW = (s_wide.anchorRegions == 2) ? width / 2 : width;
+		const int regionX = ((s_wide.anchorRegions == 2) && (mid >= width / 2)) ? width / 2 : 0;
+		const int rel = mid - regionX;
+
+		*centerX = regionX + regionW / 2;
+		if (rel * 10 < regionW * 4)
+		{
+			*shift = -regionW / 8;
+		}
+		else if (rel * 10 > regionW * 6)
+		{
+			*shift = regionW / 8;
+		}
+	}
+	return true;
+}
+
+// Compresses a primitive's vertices to 3/4 width (see NativeGpu_WideLayout).
+internal void NativeGpu_SqueezeHudVertices(GrVertex *vertex, int count)
+{
 	int minX = vertex[0].x;
 	int maxX = vertex[0].x;
 	for (int i = 1; i < count; i++)
@@ -311,16 +405,30 @@ internal void NativeGpu_SqueezeHudVertices(GrVertex *vertex, int count)
 		minX = SDL_min(minX, vertex[i].x);
 		maxX = SDL_max(maxX, vertex[i].x);
 	}
-	if ((minX <= 0) && (maxX >= width))
+
+	int centerX;
+	int shift;
+	if (!NativeGpu_WideLayout(minX, maxX, &centerX, &shift))
 	{
 		return;
 	}
 
-	const int centerX = width / 2;
 	for (int i = 0; i < count; i++)
 	{
-		vertex[i].x = NativeGpu_SqueezeHudX(vertex[i].x, centerX);
+		vertex[i].x = (s16)(NativeGpu_SqueezeHudX(vertex[i].x, centerX) + shift);
 	}
+}
+
+// Compresses a menu sub-viewport's scissor rect the same way as its vertices.
+internal RECT16 NativeGpu_SqueezeClip(const RECT16 *clip, const DISPENV *dispenv)
+{
+	RECT16 result = *clip;
+	const int centerX = dispenv->disp.w / 2;
+	const int x0 = NativeGpu_SqueezeHudX(clip->x - dispenv->disp.x, centerX);
+	const int x1 = NativeGpu_SqueezeHudX(clip->x - dispenv->disp.x + clip->w, centerX);
+	result.x = (s16)(dispenv->disp.x + x0);
+	result.w = (s16)(x1 - x0);
+	return result;
 }
 
 void LineSwapSourceVerts(VERTTYPE **p0, VERTTYPE **p1, u8 **c0, u8 **c1)
@@ -351,16 +459,12 @@ void MakeLineArray(GrVertex *vertex, VERTTYPE *p0, VERTTYPE *p1)
 	// Widescreen HUD squeezes the endpoints but keeps the 1-pixel thickness.
 	int x0 = (int)(p0[0] + ofsX);
 	int x1 = (int)(p1[0] + ofsX);
-	if (NativeGpu_HudSqueezeActive())
+	int centerX;
+	int shift;
+	if (NativeGpu_HudSqueezeActive() && NativeGpu_WideLayout(SDL_min(x0, x1), SDL_max(x0, x1), &centerX, &shift))
 	{
-		int width;
-		int height;
-		DrawEnvDimensionsInt(&width, &height);
-		if (!((SDL_min(x0, x1) <= 0) && (SDL_max(x0, x1) >= width - 1)))
-		{
-			x0 = NativeGpu_SqueezeHudX(x0, width / 2);
-			x1 = NativeGpu_SqueezeHudX(x1, width / 2);
-		}
+		x0 = NativeGpu_SqueezeHudX(x0, centerX) + shift;
+		x1 = NativeGpu_SqueezeHudX(x1, centerX) + shift;
 	}
 
 	if (dx > abs((s16)dy))
@@ -940,10 +1044,12 @@ internal void AddSplit(bool semiTrans, bool textured, bool framebufferFeedback)
 		psxTexturedSemiTrans = false;
 	}
 
+	const bool wideClip = !s_inHudOT && NativeGpu_HudSqueezeActive();
+
 	// FIXME: compare drawing environment too?
 	if (!psxTexturedSemiTrans && curSplit->blendMode == blendMode && curSplit->texFormat == texFormat && curSplit->textureId == textureId &&
 	    curSplit->drawPrimMode == s_gpu.drawPrimMode && curSplit->psxTexturedSemiTrans == psxTexturedSemiTrans &&
-	    curSplit->psxTextureOutputSTP == psxTextureOutputSTP && curSplit->psxDrawMaskSet == s_gpu.psxDrawMaskSet &&
+	    curSplit->psxTextureOutputSTP == psxTextureOutputSTP && curSplit->psxDrawMaskSet == s_gpu.psxDrawMaskSet && curSplit->wideClip == wideClip &&
 	    curSplit->drawenv.clip.x == activeDrawEnv.clip.x && curSplit->drawenv.clip.y == activeDrawEnv.clip.y &&
 	    curSplit->drawenv.clip.w == activeDrawEnv.clip.w && curSplit->drawenv.clip.h == activeDrawEnv.clip.h && curSplit->drawenv.dfe == activeDrawEnv.dfe &&
 	    curSplit->debugText == s_gpu.currentSplitDebugText)
@@ -967,6 +1073,7 @@ internal void AddSplit(bool semiTrans, bool textured, bool framebufferFeedback)
 	split->psxTexturedSemiTrans = psxTexturedSemiTrans;
 	split->psxTextureOutputSTP = psxTextureOutputSTP;
 	split->psxDrawMaskSet = s_gpu.psxDrawMaskSet;
+	split->wideClip = wideClip;
 	split->drawenv = activeDrawEnv;
 	split->dispenv = activeDispEnv;
 	split->debugText = s_gpu.currentSplitDebugText;
@@ -1012,7 +1119,15 @@ void DrawSplit(const GPUDrawSplit *split)
 	NativeRenderer_SetPSXDrawMaskSet(split->psxDrawMaskSet);
 	NativeRenderer_SetPSXTextureOutputSTP(split->psxTextureOutputSTP);
 
-	NativeRenderer_SetupClipMode(&split->drawenv.clip, &split->dispenv, drawOnScreen);
+	if (split->wideClip)
+	{
+		const RECT16 wideClip = NativeGpu_SqueezeClip(&split->drawenv.clip, &split->dispenv);
+		NativeRenderer_SetupClipMode(&wideClip, &split->dispenv, drawOnScreen);
+	}
+	else
+	{
+		NativeRenderer_SetupClipMode(&split->drawenv.clip, &split->dispenv, drawOnScreen);
+	}
 	NativeRenderer_SetOffscreenState(&split->drawenv.clip, !drawOnScreen);
 	NativeRenderer_SetProjection(&split->drawenv.clip, &split->dispenv, !drawOnScreen);
 
@@ -1207,6 +1322,7 @@ void ParsePrimitivesLinkedList(u32 *p, int singlePrimitive)
 	// setup single primitive flag (needed for AddSplits)
 	s_gpu.drawPrimMode = singlePrimitive;
 	s_inHudOT = false;
+	s_primAnchored = false;
 
 	if (singlePrimitive)
 	{
@@ -1242,6 +1358,7 @@ void ParsePrimitivesLinkedList(u32 *p, int singlePrimitive)
 
 				u8 *currentPacket = basePacket;
 				u8 *endPacket = basePacket + (tagLength + P_LEN) * sizeof(u32);
+				s_primAnchored = s_inHudOT && NativeGpu_IsAnchoredPacket(basePacket);
 				int primLength = 0;
 				if (currentPacket < endPacket)
 				{
