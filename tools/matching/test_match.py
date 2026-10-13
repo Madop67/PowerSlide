@@ -12,6 +12,9 @@ from unittest import mock
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Windows may report TEMP as an 8.3 short path (C:\Users\RUNNER~1) while the
+# pipeline resolves paths to long names; resolve it once so temp roots compare equal.
+tempfile.tempdir = str(Path(tempfile.gettempdir()).resolve())
 import pipeline as ctr_match
 import resident as ctr_resident
 import match as cli
