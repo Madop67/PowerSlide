@@ -14,10 +14,13 @@ enum NativeDisplayMode
 	NATIVE_DISPLAY_COUNT
 };
 
+// Saved by name, so the numeric order is free to change.
 enum NativeAspectMode
 {
 	NATIVE_ASPECT_ORIGINAL = 0,
-	NATIVE_ASPECT_STRETCH = 1,
+	// True 16:9: wider 3D view and culling, presented at 16:9 (see NativeSettings_WidescreenActive).
+	NATIVE_ASPECT_WIDESCREEN,
+	NATIVE_ASPECT_STRETCH,
 	NATIVE_ASPECT_COUNT
 };
 
@@ -61,6 +64,12 @@ const char *NativeSettings_GetPath(void);
 
 // Applies g_settings.video to the window and renderer (implemented by the platform layer).
 void Platform_ApplyVideoSettings(void);
+
+// Game code reads this (under CTR_NATIVE) to widen the 3D projection and culling.
+static inline int NativeSettings_WidescreenActive(void)
+{
+	return g_settings.video.aspectMode == NATIVE_ASPECT_WIDESCREEN;
+}
 
 #ifdef __cplusplus
 }

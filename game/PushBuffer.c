@@ -403,6 +403,18 @@ void PushBuffer_SetMatrixVP(struct PushBuffer *pb)
 	// scale Y axis (3)
 	pb->matrix_ViewProj.m[1][2] = pb->matrix_ViewProj.m[1][2] * r360 / r600;
 
+#ifdef CTR_NATIVE
+	// Widescreen (after CTR-ModSDK USE_16BY9): the 4:3 frame is shown stretched to
+	// 16:9, so compress X by (9/16)/(3/4) = 0.75 to keep geometry in proportion.
+	if (NativeSettings_WidescreenActive())
+	{
+		pb->matrix_ViewProj.t[0] = pb->matrix_ViewProj.t[0] * 750 / 1000;
+		pb->matrix_ViewProj.m[0][0] = pb->matrix_ViewProj.m[0][0] * 750 / 1000;
+		pb->matrix_ViewProj.m[0][1] = pb->matrix_ViewProj.m[0][1] * 750 / 1000;
+		pb->matrix_ViewProj.m[0][2] = pb->matrix_ViewProj.m[0][2] * 750 / 1000;
+	}
+#endif
+
 	// store camera matrix,
 	// otherwise oxide intro cutscene bugs out,
 	// when crash is sleeping on the grassy hill
@@ -585,6 +597,13 @@ void PushBuffer_UpdateFrustum(struct PushBuffer *pb)
 
 	val_X = pb->rect.w;
 	val_X = val_X / 2;
+#ifdef CTR_NATIVE
+	// Widescreen sees 4/3 more horizontally; widen the culling frustum to match.
+	if (NativeSettings_WidescreenActive())
+	{
+		val_X = (val_X * 1000) / 750;
+	}
+#endif
 
 	val_Y = ((pb->rect.h * 0x600) / 0x360);
 	val_Y = val_Y / 2;
@@ -627,6 +646,15 @@ void PushBuffer_UpdateFrustum(struct PushBuffer *pb)
 		posX = tx * 0x100 + cameraPosX;
 		posY = ty * 0x100 + cameraPosY;
 		posZ = tz * 0x100 + cameraPosZ;
+#ifdef CTR_NATIVE
+		// A wider frustum's corner rays reach less far forward; ModSDK found 2x restores the depth.
+		if (NativeSettings_WidescreenActive())
+		{
+			posX = tx * 0x200 + cameraPosX;
+			posY = ty * 0x200 + cameraPosY;
+			posZ = tz * 0x200 + cameraPosZ;
+		}
+#endif
 
 		iVar19 = 0x1000;
 

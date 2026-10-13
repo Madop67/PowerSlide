@@ -50,7 +50,7 @@ constexpr WindowSizePreset kWindowSizes[] = {
 };
 
 constexpr const char *kDisplayModeNames[NATIVE_DISPLAY_COUNT] = {"Windowed", "Fullscreen"};
-constexpr const char *kAspectModeNames[NATIVE_ASPECT_COUNT] = {"Original (4:3)", "Stretch to window"};
+constexpr const char *kAspectModeNames[NATIVE_ASPECT_COUNT] = {"Original (4:3)", "Widescreen (16:9)", "Stretch to window"};
 constexpr const char *kScaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"Sharp (nearest)", "Smooth (bilinear)"};
 
 // CTR palette, taken from the retail menus: orange and yellow on deep blue.
@@ -294,9 +294,10 @@ void DrawVideoTab()
 
 	ImGui::SetNextItemWidth(comboWidth);
 	changed |= ImGui::Combo("Aspect ratio", &video.aspectMode, kAspectModeNames, NATIVE_ASPECT_COUNT);
-	HelpTooltip("Original keeps the 4:3 picture with black bars. Stretch fills the window and distorts the image.");
+	HelpTooltip("Original keeps the 4:3 picture. Widescreen shows more of the world at 16:9 (HUD adjustments are still in progress). "
+	            "Stretch fills the window and distorts the image.");
 
-	ImGui::BeginDisabled(video.aspectMode != NATIVE_ASPECT_ORIGINAL);
+	ImGui::BeginDisabled(video.aspectMode == NATIVE_ASPECT_STRETCH);
 	changed |= CheckboxInt("Integer scaling", &video.integerScaling);
 	ImGui::EndDisabled();
 	ImGui::SetItemTooltip("Scale by whole multiples of the original line count, so every line is the same height. May add wider borders.");

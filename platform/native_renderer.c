@@ -120,6 +120,9 @@ global_variable b32 s_presentRenderTargetReady;
 // factor, latched once per frame in BeginScene. Offscreen (render-to-VRAM)
 // targets and VRAM itself always stay at the original resolution.
 global_variable s32 s_renderScale = 1;
+// Horizontal pixels per VRAM pixel in the main target. Widescreen widens the
+// target by 4/3 above 1x so the stretched 16:9 image keeps square pixels.
+global_variable f32 s_renderScaleX = 1.0f;
 global_variable s32 s_maxRenderTargetSize = 4096;
 
 global_variable TextureID s_whiteTexture = (TextureID)-1;
@@ -370,6 +373,11 @@ void NativeRenderer_BeginScene(void)
 	NativePerf_BeginScope(NATIVE_PERF_BUCKET_RENDERER_BEGIN_SCENE);
 	s_lastBoundTexture = 0;
 	s_renderScale = NativeRenderer_ChooseRenderScale();
+	s_renderScaleX = (f32)s_renderScale;
+	if ((s_renderScale > 1) && NativeSettings_WidescreenActive())
+	{
+		s_renderScaleX = (f32)s_renderScale * 4.0f / 3.0f;
+	}
 
 	NativeRenderer_UpdatePresentationViewport();
 	NativeRenderer_ClearPresentationBars();
@@ -492,13 +500,16 @@ internal void NativeRenderer_UpdatePresentationViewport(void)
 		return;
 	}
 
+	const int aspectW = (video->aspectMode == NATIVE_ASPECT_WIDESCREEN) ? 16 : s_presentAspectW;
+	const int aspectH = (video->aspectMode == NATIVE_ASPECT_WIDESCREEN) ? 9 : s_presentAspectH;
+
 	int viewportW = g_windowWidth;
-	int viewportH = (viewportW * s_presentAspectH) / s_presentAspectW;
+	int viewportH = (viewportW * aspectH) / aspectW;
 
 	if (viewportH > g_windowHeight)
 	{
 		viewportH = g_windowHeight;
-		viewportW = (viewportH * s_presentAspectW) / s_presentAspectH;
+		viewportW = (viewportH * aspectW) / aspectH;
 	}
 
 	// Integer scaling snaps the picture height to a whole multiple of the displayed
@@ -507,7 +518,7 @@ internal void NativeRenderer_UpdatePresentationViewport(void)
 	if (video->integerScaling && (sourceLines > 0) && (viewportH >= sourceLines))
 	{
 		viewportH = (viewportH / sourceLines) * sourceLines;
-		viewportW = (viewportH * s_presentAspectW) / s_presentAspectH;
+		viewportW = (viewportH * aspectW) / aspectH;
 	}
 
 	if (viewportW < 1)
@@ -560,7 +571,7 @@ internal void NativeRenderer_DestroyRenderTarget(struct NativeRenderTarget *targ
 	target->texture = (TextureID)-1;
 }
 
-internal void NativeRenderer_EnsureRenderTargetScaled(struct NativeRenderTarget *target, int sourceWidth, int sourceHeight, int scale)
+internal void NativeRenderer_EnsureRenderTargetScaled(struct NativeRenderTarget *target, int sourceWidth, int sourceHeight, f32 scaleX, int scaleY)
 {
 	if (sourceWidth < 1)
 	{
@@ -571,8 +582,8 @@ internal void NativeRenderer_EnsureRenderTargetScaled(struct NativeRenderTarget 
 		sourceHeight = 1;
 	}
 
-	const int width = sourceWidth * scale;
-	const int height = sourceHeight * scale;
+	const int width = (int)((f32)sourceWidth * scaleX + 0.5f);
+	const int height = sourceHeight * scaleY;
 	target->sourceWidth = sourceWidth;
 	target->sourceHeight = sourceHeight;
 
@@ -596,7 +607,7 @@ internal void NativeRenderer_EnsureRenderTargetScaled(struct NativeRenderTarget 
 
 internal void NativeRenderer_EnsureRenderTarget(struct NativeRenderTarget *target, int width, int height)
 {
-	NativeRenderer_EnsureRenderTargetScaled(target, width, height, 1);
+	NativeRenderer_EnsureRenderTargetScaled(target, width, height, 1.0f, 1);
 }
 
 internal s32 NativeRenderer_ChooseRenderScale(void)
@@ -628,7 +639,7 @@ internal void NativeRenderer_BindMainRenderTarget(void)
 		height = activeDrawEnv.clip.h;
 	}
 
-	NativeRenderer_EnsureRenderTargetScaled(&s_mainRenderTarget, width, height, s_renderScale);
+	NativeRenderer_EnsureRenderTargetScaled(&s_mainRenderTarget, width, height, s_renderScaleX, s_renderScale);
 	glBindFramebuffer(GL_FRAMEBUFFER, s_mainRenderTarget.framebuffer);
 }
 
@@ -1399,7 +1410,7 @@ void NativeRenderer_SetupClipMode(const RECT16 *rect, const DISPENV *displayEnv,
 	// internal resolution scale. Host-window coordinates enter only at presentation.
 	const float viewportX = 0.0f;
 	const float viewportY = 0.0f;
-	const float viewportW = (float)(displayEnv->disp.w * s_renderScale);
+	const float viewportW = (float)displayEnv->disp.w * s_renderScaleX;
 	const float viewportH = (float)(displayEnv->disp.h * s_renderScale);
 	const float flipOffset = viewportY + viewportH - clipRectH * viewportH;
 	const float crx = viewportX + clipRectX * viewportW;

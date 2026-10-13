@@ -38,7 +38,7 @@ struct NativeSettingDesc
 };
 
 global_variable const char *const s_displayModeNames[NATIVE_DISPLAY_COUNT] = {"windowed", "fullscreen"};
-global_variable const char *const s_aspectModeNames[NATIVE_ASPECT_COUNT] = {"original", "stretch"};
+global_variable const char *const s_aspectModeNames[NATIVE_ASPECT_COUNT] = {"original", "widescreen", "stretch"};
 global_variable const char *const s_scaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"sharp", "smooth"};
 
 #define NATIVE_VIDEO_OFFSET(field) offsetof(struct NativeSettings, video.field)
