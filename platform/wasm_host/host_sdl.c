@@ -131,6 +131,29 @@ u32 w2c_env_SDL_HideCursor(struct w2c_env *env)
 	return SDL_HideCursor();
 }
 
+u64 w2c_env_SDL_GetTicks(struct w2c_env *env)
+{
+	(void)env;
+	return SDL_GetTicks();
+}
+
+u32 w2c_env_SDL_GetVersion(struct w2c_env *env)
+{
+	(void)env;
+	return (u32)SDL_GetVersion();
+}
+
+u32 w2c_env_SDL_GetCurrentVideoDriver(struct w2c_env *env)
+{
+	return HostMem_StringToGuest(env, SDL_GetCurrentVideoDriver());
+}
+
+u32 w2c_env_SDL_OpenURL(struct w2c_env *env, u32 url)
+{
+	(void)env;
+	return SDL_OpenURL(HostSDL_Str(url));
+}
+
 // ---- events / keyboard -----------------------------------------------------
 
 static u32 s_keyboardMirror;
@@ -186,8 +209,9 @@ void w2c_env_SDL_PumpEvents(struct w2c_env *env)
 	HostSDL_RefreshKeyboardMirror();
 }
 
-// NOTE: Only event types with no pointer members are forwarded; their layout is
-// identical on wasm32 and arm64. Text/drop/clipboard/user events are dropped.
+// NOTE: Only event types with no pointer members are forwarded as-is; their
+// layout is identical on wasm32 and arm64. Text input is translated by
+// HostSDL_TranslateTextInput; drop/clipboard/user events are dropped.
 static bool HostSDL_IsForwardedEvent(Uint32 type)
 {
 	if ((type >= SDL_EVENT_QUIT) && (type < SDL_EVENT_KEY_DOWN))
@@ -220,6 +244,48 @@ static bool HostSDL_IsForwardedEvent(Uint32 type)
 	return false;
 }
 
+// SDL_TextInputEvent as laid out in wasm32 guest memory (4-byte pointers).
+typedef struct GuestTextInputEvent
+{
+	Uint32 type;
+	Uint32 reserved;
+	Uint64 timestamp;
+	SDL_WindowID windowID;
+	Uint32 text;
+} GuestTextInputEvent;
+
+_Static_assert(sizeof(GuestTextInputEvent) == 24, "GuestTextInputEvent must match the wasm32 layout");
+
+static u32 s_textInputBuffer;
+static size_t s_textInputCapacity;
+
+// NOTE: The guest consumes each text event before polling again (ImGui copies
+// the characters), so one reusable guest buffer holds the current text.
+static void HostSDL_TranslateTextInput(const SDL_TextInputEvent *text, u32 eventOut)
+{
+	const char *str = (text->text != NULL) ? text->text : "";
+	size_t len = strlen(str) + 1;
+
+	if (len > s_textInputCapacity)
+	{
+		HostMem_Free(s_textInputBuffer);
+		s_textInputCapacity = (len < 64) ? 64 : len;
+		s_textInputBuffer = HostMem_Alloc((u32)s_textInputCapacity);
+	}
+
+	memcpy(HOST_G2H_SIZED(s_textInputBuffer, len), str, len);
+
+	GuestTextInputEvent guest = {0};
+	guest.type = text->type;
+	guest.timestamp = text->timestamp;
+	guest.windowID = text->windowID;
+	guest.text = s_textInputBuffer;
+
+	uint8_t *out = HOST_G2H_SIZED(eventOut, sizeof(SDL_Event));
+	memset(out, 0, sizeof(SDL_Event));
+	memcpy(out, &guest, sizeof(guest));
+}
+
 u32 w2c_env_SDL_PollEvent(struct w2c_env *env, u32 eventOut)
 {
 	(void)env;
@@ -232,6 +298,13 @@ u32 w2c_env_SDL_PollEvent(struct w2c_env *env, u32 eventOut)
 
 	while (SDL_PollEvent(&event))
 	{
+		if (event.type == SDL_EVENT_TEXT_INPUT)
+		{
+			HostSDL_RefreshKeyboardMirror();
+			HostSDL_TranslateTextInput(&event.text, eventOut);
+			return 1;
+		}
+
 		if (!HostSDL_IsForwardedEvent(event.type))
 		{
 			continue;
@@ -363,6 +436,190 @@ u32 w2c_env_SDL_GL_GetCurrentContext(struct w2c_env *env)
 {
 	(void)env;
 	return HostHandle_FromPtr(SDL_GL_GetCurrentContext());
+}
+
+static void HostSDL_WriteInt2(u32 outA, u32 outB, int a, int b)
+{
+	if (outA != 0)
+	{
+		memcpy(HOST_G2H_SIZED(outA, 4), &a, 4);
+	}
+
+	if (outB != 0)
+	{
+		memcpy(HOST_G2H_SIZED(outB, 4), &b, 4);
+	}
+}
+
+u32 w2c_env_SDL_GetWindowPosition(struct w2c_env *env, u32 window, u32 outX, u32 outY)
+{
+	(void)env;
+	int x = 0;
+	int y = 0;
+	bool ok = SDL_GetWindowPosition(H2P(SDL_Window, window), &x, &y);
+
+	HostSDL_WriteInt2(outX, outY, x, y);
+	return ok;
+}
+
+u32 w2c_env_SDL_GetWindowSizeInPixels(struct w2c_env *env, u32 window, u32 outW, u32 outH)
+{
+	(void)env;
+	int w = 0;
+	int h = 0;
+	bool ok = SDL_GetWindowSizeInPixels(H2P(SDL_Window, window), &w, &h);
+
+	HostSDL_WriteInt2(outW, outH, w, h);
+	return ok;
+}
+
+f32 w2c_env_SDL_GetWindowDisplayScale(struct w2c_env *env, u32 window)
+{
+	(void)env;
+	return SDL_GetWindowDisplayScale(H2P(SDL_Window, window));
+}
+
+u32 w2c_env_SDL_GetWindowID(struct w2c_env *env, u32 window)
+{
+	(void)env;
+	return SDL_GetWindowID(H2P(SDL_Window, window));
+}
+
+// NOTE: HostHandle_FromPtr reuses an existing handle, so these return the same
+// handle the guest got from SDL_CreateWindow.
+u32 w2c_env_SDL_GetWindowFromID(struct w2c_env *env, u32 id)
+{
+	(void)env;
+	return HostHandle_FromPtr(SDL_GetWindowFromID((SDL_WindowID)id));
+}
+
+u32 w2c_env_SDL_GetKeyboardFocus(struct w2c_env *env)
+{
+	(void)env;
+	return HostHandle_FromPtr(SDL_GetKeyboardFocus());
+}
+
+u32 w2c_env_SDL_GetWindowRelativeMouseMode(struct w2c_env *env, u32 window)
+{
+	(void)env;
+	return SDL_GetWindowRelativeMouseMode(H2P(SDL_Window, window));
+}
+
+u32 w2c_env_SDL_PushEvent(struct w2c_env *env, u32 event)
+{
+	(void)env;
+	SDL_Event hostEvent;
+
+	memcpy(&hostEvent, HOST_G2H_SIZED(event, sizeof(SDL_Event)), sizeof(SDL_Event));
+
+	// NOTE: Events with pointer members would carry guest offsets; none are pushed today.
+	if (!HostSDL_IsForwardedEvent(hostEvent.type))
+	{
+		HostMem_Fatal("SDL_PushEvent: unsupported event type 0x%x", hostEvent.type);
+	}
+
+	return SDL_PushEvent(&hostEvent);
+}
+
+// ---- mouse / cursor / clipboard / text input (settings UI) ------------------
+
+u32 w2c_env_SDL_CaptureMouse(struct w2c_env *env, u32 enabled)
+{
+	(void)env;
+	return SDL_CaptureMouse(enabled != 0);
+}
+
+u32 w2c_env_SDL_GetGlobalMouseState(struct w2c_env *env, u32 outX, u32 outY)
+{
+	(void)env;
+	float x = 0.0f;
+	float y = 0.0f;
+	SDL_MouseButtonFlags buttons = SDL_GetGlobalMouseState(&x, &y);
+
+	if (outX != 0)
+	{
+		memcpy(HOST_G2H_SIZED(outX, 4), &x, 4);
+	}
+
+	if (outY != 0)
+	{
+		memcpy(HOST_G2H_SIZED(outY, 4), &y, 4);
+	}
+
+	return buttons;
+}
+
+void w2c_env_SDL_WarpMouseInWindow(struct w2c_env *env, u32 window, f32 x, f32 y)
+{
+	(void)env;
+	SDL_WarpMouseInWindow(H2P(SDL_Window, window), x, y);
+}
+
+u32 w2c_env_SDL_CreateSystemCursor(struct w2c_env *env, u32 id)
+{
+	(void)env;
+	return HostHandle_FromPtr(SDL_CreateSystemCursor((SDL_SystemCursor)id));
+}
+
+u32 w2c_env_SDL_SetCursor(struct w2c_env *env, u32 cursor)
+{
+	(void)env;
+	return SDL_SetCursor(H2P(SDL_Cursor, cursor));
+}
+
+void w2c_env_SDL_DestroyCursor(struct w2c_env *env, u32 cursor)
+{
+	(void)env;
+	SDL_DestroyCursor(H2P(SDL_Cursor, cursor));
+	HostHandle_Release(cursor);
+}
+
+u32 w2c_env_SDL_GetClipboardText(struct w2c_env *env)
+{
+	(void)env;
+	char *text = SDL_GetClipboardText();
+
+	if (text == NULL)
+	{
+		return 0;
+	}
+
+	// NOTE: Copied into guest memory; the guest releases it with SDL_free.
+	u32 len = (u32)strlen(text) + 1;
+	u32 guestText = HostMem_Alloc(len);
+	memcpy(HOST_G2H_SIZED(guestText, len), text, len);
+	SDL_free(text);
+	return guestText;
+}
+
+u32 w2c_env_SDL_SetClipboardText(struct w2c_env *env, u32 text)
+{
+	(void)env;
+	return SDL_SetClipboardText(HostSDL_Str(text));
+}
+
+u32 w2c_env_SDL_StartTextInput(struct w2c_env *env, u32 window)
+{
+	(void)env;
+	return SDL_StartTextInput(H2P(SDL_Window, window));
+}
+
+u32 w2c_env_SDL_StopTextInput(struct w2c_env *env, u32 window)
+{
+	(void)env;
+	return SDL_StopTextInput(H2P(SDL_Window, window));
+}
+
+u32 w2c_env_SDL_TextInputActive(struct w2c_env *env, u32 window)
+{
+	(void)env;
+	return SDL_TextInputActive(H2P(SDL_Window, window));
+}
+
+u32 w2c_env_SDL_SetTextInputArea(struct w2c_env *env, u32 window, u32 rect, u32 cursor)
+{
+	(void)env;
+	return SDL_SetTextInputArea(H2P(SDL_Window, window), HOST_G2H_SIZED(rect, sizeof(SDL_Rect)), (int)cursor);
 }
 
 // ---- surfaces (screenshots) ------------------------------------------------
@@ -626,4 +883,10 @@ u32 w2c_env_SDL_GetGamepadAxisFromString(struct w2c_env *env, u32 str)
 {
 	(void)env;
 	return (u32)SDL_GetGamepadAxisFromString(HostSDL_Str(str));
+}
+
+u32 w2c_env_SDL_GetGamepadButtonLabelForType(struct w2c_env *env, u32 type, u32 button)
+{
+	(void)env;
+	return (u32)SDL_GetGamepadButtonLabelForType((SDL_GamepadType)type, (SDL_GamepadButton)button);
 }

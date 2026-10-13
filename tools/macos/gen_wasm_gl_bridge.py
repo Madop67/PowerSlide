@@ -18,7 +18,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 GLAD_HEADER = ROOT / "include/platform/native_glad.h"
 GUEST_OUT = ROOT / "include/platform/wasm/guest_gl.h"
 HOST_OUT = ROOT / "platform/wasm_host/host_gl.gen.c"
-SCAN = [ROOT / "main.c"] + sorted(p for p in (ROOT / "platform").glob("*.c") if p.name != "native_glad.c")
+SCAN = (
+    [ROOT / "main.c"]
+    + sorted(p for p in (ROOT / "platform").glob("*.c") if p.name != "native_glad.c")
+    + [ROOT / "platform/native_ui.cpp", ROOT / "externals/imgui/backends/imgui_impl_opengl3.cpp"]
+)
 
 TYPEDEF_RE = re.compile(r"typedef\s+([^;()]+?)\s*\(APIENTRYP\s+PFN(\w+)PROC\)\s*\(([^;]*?)\);", re.S)
 DEFINE_RE = re.compile(r"#define\s+(gl[A-Z]\w*)\s+glad_\1\b")
@@ -30,11 +34,15 @@ U64_TYPES = {"GLint64", "GLuint64", "GLint64EXT", "GLuint64EXT"}
 
 # NOTE: These GL entry points take a pointer argument that is a buffer offset
 # (with a VBO/IBO bound), not guest memory. Pass the raw value through.
-OFFSET_POINTER_ARGS = {("glVertexAttribPointer", 5)}
+OFFSET_POINTER_ARGS = {("glVertexAttribPointer", 5), ("glDrawElements", 3)}
 
 # NOTE: KHR_debug is not exposed by Apple's OpenGL, and the guest only calls
 # these when GLAD_GL_KHR_debug is set, which the sandbox reports as 0.
 NOOP_FUNCS = {"glPushDebugGroup", "glPopDebugGroup"}
+
+# NOTE: Only referenced by ImGui's ES2 vertex attribute fallback, which is
+# compiled out (IMGUI_IMPL_OPENGL_USE_VERTEX_ARRAY), so no import is needed.
+SKIP_FUNCS = {"glGetVertexAttribPointerv"}
 
 
 def wasm_type(ctype):
@@ -82,7 +90,7 @@ def main():
     ident_re = re.compile(r"\b(gl[A-Z]\w*)\s*\(")
     for path in SCAN:
         for m in ident_re.finditer(path.read_text(errors="replace")):
-            if m.group(1) in names:
+            if (m.group(1) in names) and (m.group(1) not in SKIP_FUNCS):
                 used.add(m.group(1))
 
     guest = [
@@ -149,7 +157,7 @@ def main():
         if ret == "void":
             host.append(f"\t{call};")
         elif "*" in ret:
-            if name != "glGetString":
+            if name not in ("glGetString", "glGetStringi"):
                 sys.exit(f"ERROR: {name} returns a pointer; add a hand-written shim")
             host.append(f"\treturn HostMem_StringToGuest(env, (const char *){call});")
         else:

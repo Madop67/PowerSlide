@@ -26,6 +26,8 @@ CTR_WASM_GL_IMPORT(glBindTexture) void glBindTexture(GLenum target, GLuint textu
 CTR_WASM_GL_IMPORT(glBindVertexArray) void glBindVertexArray(GLuint array);
 #undef glBlendColor
 CTR_WASM_GL_IMPORT(glBlendColor) void glBlendColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
+#undef glBlendEquation
+CTR_WASM_GL_IMPORT(glBlendEquation) void glBlendEquation(GLenum mode);
 #undef glBlendEquationSeparate
 CTR_WASM_GL_IMPORT(glBlendEquationSeparate) void glBlendEquationSeparate(GLenum modeRGB, GLenum modeAlpha);
 #undef glBlendFuncSeparate
@@ -66,10 +68,16 @@ CTR_WASM_GL_IMPORT(glDeleteTextures) void glDeleteTextures(GLsizei n, const GLui
 CTR_WASM_GL_IMPORT(glDeleteVertexArrays) void glDeleteVertexArrays(GLsizei n, const GLuint * arrays);
 #undef glDepthFunc
 CTR_WASM_GL_IMPORT(glDepthFunc) void glDepthFunc(GLenum func);
+#undef glDetachShader
+CTR_WASM_GL_IMPORT(glDetachShader) void glDetachShader(GLuint program, GLuint shader);
 #undef glDisable
 CTR_WASM_GL_IMPORT(glDisable) void glDisable(GLenum cap);
+#undef glDisableVertexAttribArray
+CTR_WASM_GL_IMPORT(glDisableVertexAttribArray) void glDisableVertexAttribArray(GLuint index);
 #undef glDrawArrays
 CTR_WASM_GL_IMPORT(glDrawArrays) void glDrawArrays(GLenum mode, GLint first, GLsizei count);
+#undef glDrawElements
+CTR_WASM_GL_IMPORT(glDrawElements) void glDrawElements(GLenum mode, GLsizei count, GLenum type, const void * indices);
 #undef glEnable
 CTR_WASM_GL_IMPORT(glEnable) void glEnable(GLenum cap);
 #undef glEnableVertexAttribArray
@@ -92,6 +100,10 @@ CTR_WASM_GL_IMPORT(glGenRenderbuffers) void glGenRenderbuffers(GLsizei n, GLuint
 CTR_WASM_GL_IMPORT(glGenTextures) void glGenTextures(GLsizei n, GLuint * textures);
 #undef glGenVertexArrays
 CTR_WASM_GL_IMPORT(glGenVertexArrays) void glGenVertexArrays(GLsizei n, GLuint * arrays);
+#undef glGetAttribLocation
+CTR_WASM_GL_IMPORT(glGetAttribLocation) GLint glGetAttribLocation(GLuint program, const GLchar * name);
+#undef glGetError
+CTR_WASM_GL_IMPORT(glGetError) GLenum glGetError(void);
 #undef glGetFloatv
 CTR_WASM_GL_IMPORT(glGetFloatv) void glGetFloatv(GLenum pname, GLfloat * data);
 #undef glGetIntegerv
@@ -110,10 +122,16 @@ CTR_WASM_GL_IMPORT(glGetShaderInfoLog) void glGetShaderInfoLog(GLuint shader, GL
 CTR_WASM_GL_IMPORT(glGetShaderiv) void glGetShaderiv(GLuint shader, GLenum pname, GLint * params);
 #undef glGetString
 CTR_WASM_GL_IMPORT(glGetString) const GLubyte * glGetString(GLenum name);
+#undef glGetStringi
+CTR_WASM_GL_IMPORT(glGetStringi) const GLubyte * glGetStringi(GLenum name, GLuint index);
 #undef glGetUniformLocation
 CTR_WASM_GL_IMPORT(glGetUniformLocation) GLint glGetUniformLocation(GLuint program, const GLchar * name);
+#undef glGetVertexAttribiv
+CTR_WASM_GL_IMPORT(glGetVertexAttribiv) void glGetVertexAttribiv(GLuint index, GLenum pname, GLint * params);
 #undef glIsEnabled
 CTR_WASM_GL_IMPORT(glIsEnabled) GLboolean glIsEnabled(GLenum cap);
+#undef glIsProgram
+CTR_WASM_GL_IMPORT(glIsProgram) GLboolean glIsProgram(GLuint program);
 #undef glLinkProgram
 CTR_WASM_GL_IMPORT(glLinkProgram) void glLinkProgram(GLuint program);
 #undef glPixelStorei

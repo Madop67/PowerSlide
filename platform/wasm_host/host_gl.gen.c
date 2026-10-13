@@ -63,6 +63,12 @@ void w2c_env_glBlendColor(struct w2c_env *env, f32 a0, f32 a1, f32 a2, f32 a3)
 	glBlendColor((GLfloat)a0, (GLfloat)a1, (GLfloat)a2, (GLfloat)a3);
 }
 
+void w2c_env_glBlendEquation(struct w2c_env *env, u32 a0)
+{
+	(void)env;
+	glBlendEquation((GLenum)a0);
+}
+
 void w2c_env_glBlendEquationSeparate(struct w2c_env *env, u32 a0, u32 a1)
 {
 	(void)env;
@@ -183,16 +189,34 @@ void w2c_env_glDepthFunc(struct w2c_env *env, u32 a0)
 	glDepthFunc((GLenum)a0);
 }
 
+void w2c_env_glDetachShader(struct w2c_env *env, u32 a0, u32 a1)
+{
+	(void)env;
+	glDetachShader((GLuint)a0, (GLuint)a1);
+}
+
 void w2c_env_glDisable(struct w2c_env *env, u32 a0)
 {
 	(void)env;
 	glDisable((GLenum)a0);
 }
 
+void w2c_env_glDisableVertexAttribArray(struct w2c_env *env, u32 a0)
+{
+	(void)env;
+	glDisableVertexAttribArray((GLuint)a0);
+}
+
 void w2c_env_glDrawArrays(struct w2c_env *env, u32 a0, u32 a1, u32 a2)
 {
 	(void)env;
 	glDrawArrays((GLenum)a0, (GLint)a1, (GLsizei)a2);
+}
+
+void w2c_env_glDrawElements(struct w2c_env *env, u32 a0, u32 a1, u32 a2, u32 a3)
+{
+	(void)env;
+	glDrawElements((GLenum)a0, (GLsizei)a1, (GLenum)a2, (const void *)(uintptr_t)a3);
 }
 
 void w2c_env_glEnable(struct w2c_env *env, u32 a0)
@@ -261,6 +285,18 @@ void w2c_env_glGenVertexArrays(struct w2c_env *env, u32 a0, u32 a1)
 	glGenVertexArrays((GLsizei)a0, (GLuint *)HOST_G2H(env, a1));
 }
 
+u32 w2c_env_glGetAttribLocation(struct w2c_env *env, u32 a0, u32 a1)
+{
+	(void)env;
+	return (u32)glGetAttribLocation((GLuint)a0, (const GLchar *)HOST_G2H(env, a1));
+}
+
+u32 w2c_env_glGetError(struct w2c_env *env)
+{
+	(void)env;
+	return (u32)glGetError();
+}
+
 void w2c_env_glGetFloatv(struct w2c_env *env, u32 a0, u32 a1)
 {
 	(void)env;
@@ -315,16 +351,34 @@ u32 w2c_env_glGetString(struct w2c_env *env, u32 a0)
 	return HostMem_StringToGuest(env, (const char *)glGetString((GLenum)a0));
 }
 
+u32 w2c_env_glGetStringi(struct w2c_env *env, u32 a0, u32 a1)
+{
+	(void)env;
+	return HostMem_StringToGuest(env, (const char *)glGetStringi((GLenum)a0, (GLuint)a1));
+}
+
 u32 w2c_env_glGetUniformLocation(struct w2c_env *env, u32 a0, u32 a1)
 {
 	(void)env;
 	return (u32)glGetUniformLocation((GLuint)a0, (const GLchar *)HOST_G2H(env, a1));
 }
 
+void w2c_env_glGetVertexAttribiv(struct w2c_env *env, u32 a0, u32 a1, u32 a2)
+{
+	(void)env;
+	glGetVertexAttribiv((GLuint)a0, (GLenum)a1, (GLint *)HOST_G2H(env, a2));
+}
+
 u32 w2c_env_glIsEnabled(struct w2c_env *env, u32 a0)
 {
 	(void)env;
 	return (u32)glIsEnabled((GLenum)a0);
+}
+
+u32 w2c_env_glIsProgram(struct w2c_env *env, u32 a0)
+{
+	(void)env;
+	return (u32)glIsProgram((GLuint)a0);
 }
 
 void w2c_env_glLinkProgram(struct w2c_env *env, u32 a0)
