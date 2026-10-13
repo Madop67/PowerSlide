@@ -11,6 +11,11 @@ if ! command -v gcc &>/dev/null; then
     exit 1
 fi
 
+# -m32 builds must resolve i386 .pc files, or SDL silently drops PulseAudio and friends
+if [ -z "${PKG_CONFIG_LIBDIR+x}" ] && [ -d /usr/lib/i386-linux-gnu/pkgconfig ]; then
+    export PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig
+fi
+
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_C_FLAGS="-m32" -DCMAKE_EXE_LINKER_FLAGS="-m32"
 cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
