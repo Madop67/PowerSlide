@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux i686 (GCC)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install i386 build dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-multilib cmake python3 \
+            libx11-dev:i386 libxext-dev:i386 libxcursor-dev:i386 libxi-dev:i386 \
+            libxrandr-dev:i386 libxfixes-dev:i386 libxss-dev:i386 libxtst-dev:i386 \
+            libxkbcommon-dev:i386 libgl1-mesa-dev:i386 libegl1-mesa-dev:i386 \
+            libwayland-dev:i386 libdrm-dev:i386 libgbm-dev:i386 \
+            libasound2-dev:i386 libpulse-dev:i386 libudev-dev:i386 libdbus-1-dev:i386
+
+      # build.sh configures, builds and runs ctest (version, matching unit tests, renderer smoke tests).
+      - name: Build and test
+        run: ./build.sh
+
+      # The full byte-matching check needs a retail disc and runs locally; CI verifies the
+      # vendored compiler, maspsx and binutils still hash and run as the manifest expects.
+      - name: Verify matching toolchain
+        run: ./match.sh toolchain
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ctr_native-linux-i686
+          path: build/ctr_native
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86 (MSVC)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # build-msvc.bat configures the windows-msvc-x86 preset, builds Release and runs ctest.
+      - name: Build and test
+        shell: cmd
+        run: build-msvc.bat
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ctr_native-windows-x86
+          path: build-msvc-x86/Release/ctr_native.exe
+          if-no-files-found: error
