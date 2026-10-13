@@ -1,7 +1,8 @@
 // PowerSlide in-game settings menu built on Dear ImGui (externals/imgui).
 // F1 (or Esc while open) toggles one tabbed settings window, styled after
 // the game's own orange/yellow-on-blue menus. Overlays such as the FPS counter
-// draw whether or not the menu is open.
+// draw whether or not the menu is open. The game keeps running underneath; the
+// menu holds back only the device that opened it (the keyboard, or one controller).
 
 #include <platform/native_ui.h>
 #include <platform/native_input_config.h>
@@ -14,6 +15,7 @@
 #include "native_ui_font.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #ifndef CTR_NATIVE_VERSION
 #define CTR_NATIVE_VERSION "0.0.0-dev"
@@ -83,6 +85,10 @@ constexpr ImU32 kMutedText = Rgb(0x9A, 0xA4, 0xD8);
 SDL_Window *s_window = nullptr;
 bool s_initialized = false;
 bool s_menuOpen = false;
+// Controller that opened the menu and navigates it; 0 when the keyboard and mouse drive it.
+SDL_JoystickID s_menuController = 0;
+// Input tab's player to select when it next draws (the player whose controller opened the menu), or -1.
+int s_selectPlayerTab = -1;
 float s_styleScale = 0.0f;
 
 void ApplyColors(ImGuiStyle &style)
@@ -197,14 +203,30 @@ void UpdateStyleScale()
 
 void CancelCapture();
 
-void SetMenuOpen(bool open)
+// ImGui navigates with the menu's controller only, so other players' controllers stay in the game.
+void SetMenuController(SDL_JoystickID controller)
 {
+	SDL_Gamepad *gamepad = (controller != 0) ? SDL_GetGamepadFromID(controller) : nullptr;
+	s_menuController = (gamepad != nullptr) ? controller : 0;
+	ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_Manual, &gamepad, (gamepad != nullptr) ? 1 : 0);
+}
+
+void SetMenuOpen(bool open, SDL_JoystickID controller)
+{
+	if (open)
+	{
+		SetMenuController(controller);
+	}
 	if (s_menuOpen == open)
 	{
 		return;
 	}
 	s_menuOpen = open;
 	CancelCapture();
+	if (!open)
+	{
+		SetMenuController(0);
+	}
 	Platform_UpdateCursorVisibility();
 }
 
@@ -368,6 +390,7 @@ constexpr Sint16 kCaptureAxisThreshold = 20000;
 struct BindingCapture
 {
 	bool active = false;
+	int player = 0;
 	int button = 0;
 	int column = 0;
 	Uint64 startedMs = 0;
@@ -386,39 +409,43 @@ void CommitInputSettings()
 	NativeSettings_Save();
 }
 
-void StartCapture(int button, int column)
+void StartCapture(int player, int button, int column)
 {
 	s_capture.active = true;
+	s_capture.player = player;
 	s_capture.button = button;
 	s_capture.column = column;
 	s_capture.startedMs = SDL_GetTicks();
 }
 
-// A key or pad input can only drive one PS1 button; binding it elsewhere unbinds it here.
-void AssignKey(int button, int slot, int scancode)
+// A key can only drive one PS1 button of one player; binding it elsewhere unbinds it there.
+void AssignKey(int player, int button, int slot, int scancode)
 {
-	NativeInputSettings &input = g_settings.input;
 	if (scancode != SDL_SCANCODE_UNKNOWN)
 	{
-		for (int b = 0; b < NATIVE_PAD_BUTTON_COUNT; b++)
+		for (NativePlayerInputSettings &other : g_settings.input.players)
 		{
-			for (int k = 0; k < NATIVE_KEY_BINDINGS; k++)
+			for (int b = 0; b < NATIVE_PAD_BUTTON_COUNT; b++)
 			{
-				if (input.keyboard[b][k] == scancode)
+				for (int k = 0; k < NATIVE_KEY_BINDINGS; k++)
 				{
-					input.keyboard[b][k] = SDL_SCANCODE_UNKNOWN;
+					if (other.keyboard[b][k] == scancode)
+					{
+						other.keyboard[b][k] = SDL_SCANCODE_UNKNOWN;
+					}
 				}
 			}
 		}
 	}
-	input.keyboard[button][slot] = scancode;
+	g_settings.input.players[player].keyboard[button][slot] = scancode;
 	s_capture.active = false;
 	CommitInputSettings();
 }
 
-void AssignPad(int button, int binding)
+// A controller input drives one PS1 button per player (each player has its own controller).
+void AssignPad(int player, int button, int binding)
 {
-	NativeInputSettings &input = g_settings.input;
+	NativePlayerInputSettings &input = g_settings.input.players[player];
 	if (binding != NATIVE_PAD_BIND_NONE)
 	{
 		for (int b = 0; b < NATIVE_PAD_BUTTON_COUNT; b++)
@@ -432,6 +459,13 @@ void AssignPad(int button, int binding)
 	input.gamepad[button] = binding;
 	s_capture.active = false;
 	CommitInputSettings();
+}
+
+// While a player has a controller, only that controller can bind that player's buttons.
+bool CaptureAcceptsController(SDL_JoystickID which)
+{
+	const int controller = NativeInput_GetPlayerControllerId(s_capture.player);
+	return (controller == 0) || ((SDL_JoystickID)controller == which);
 }
 
 // Returns true when the event was consumed by an active binding capture.
@@ -465,16 +499,16 @@ bool HandleCaptureEvent(const SDL_Event *event)
 		{
 			if (keyColumn)
 			{
-				AssignKey(s_capture.button, s_capture.column, SDL_SCANCODE_UNKNOWN);
+				AssignKey(s_capture.player, s_capture.button, s_capture.column, SDL_SCANCODE_UNKNOWN);
 			}
 			else
 			{
-				AssignPad(s_capture.button, NATIVE_PAD_BIND_NONE);
+				AssignPad(s_capture.player, s_capture.button, NATIVE_PAD_BIND_NONE);
 			}
 		}
 		else if (keyColumn && (event->key.scancode != SDL_SCANCODE_F1))
 		{
-			AssignKey(s_capture.button, s_capture.column, event->key.scancode);
+			AssignKey(s_capture.player, s_capture.button, s_capture.column, event->key.scancode);
 		}
 		return true;
 
@@ -483,9 +517,10 @@ bool HandleCaptureEvent(const SDL_Event *event)
 
 	case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
 		// Ignore the press that started the capture (gamepad navigation's "accept").
-		if (!keyColumn && (elapsed > kCaptureIgnoreMs) && (event->gbutton.button != SDL_GAMEPAD_BUTTON_GUIDE))
+		if (!keyColumn && (elapsed > kCaptureIgnoreMs) && (event->gbutton.button != SDL_GAMEPAD_BUTTON_GUIDE) &&
+		    CaptureAcceptsController(event->gbutton.which))
 		{
-			AssignPad(s_capture.button, event->gbutton.button);
+			AssignPad(s_capture.player, s_capture.button, event->gbutton.button);
 		}
 		return true;
 
@@ -493,11 +528,11 @@ bool HandleCaptureEvent(const SDL_Event *event)
 		return true;
 
 	case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-		if (!keyColumn && (elapsed > kCaptureIgnoreMs) &&
+		if (!keyColumn && (elapsed > kCaptureIgnoreMs) && CaptureAcceptsController(event->gaxis.which) &&
 		    ((event->gaxis.value > kCaptureAxisThreshold) || (event->gaxis.value < -kCaptureAxisThreshold)))
 		{
 			const int sign = (event->gaxis.value < 0) ? NATIVE_PAD_BIND_NEGATIVE : 0;
-			AssignPad(s_capture.button, NATIVE_PAD_BIND_AXIS | event->gaxis.axis | sign);
+			AssignPad(s_capture.player, s_capture.button, NATIVE_PAD_BIND_AXIS | event->gaxis.axis | sign);
 		}
 		return true;
 
@@ -511,13 +546,17 @@ bool IsPlayStationPad(int type)
 	return (type == SDL_GAMEPAD_TYPE_PS3) || (type == SDL_GAMEPAD_TYPE_PS4) || (type == SDL_GAMEPAD_TYPE_PS5);
 }
 
-// The controller type labels are drawn for: player 1's controller, else any connected one.
-int LabelGamepadType()
+// The controller type labels are drawn for: the player's own controller, else any connected one.
+int LabelGamepadType(int player)
 {
 	int type = SDL_GAMEPAD_TYPE_STANDARD;
-	for (int player = 0; player < NATIVE_INPUT_PLAYERS; player++)
+	if (NativeInput_GetPlayerController(player, nullptr, 0, &type))
 	{
-		if (NativeInput_GetPlayerController(player, nullptr, 0, &type))
+		return type;
+	}
+	for (int other = 0; other < NATIVE_INPUT_PLAYERS; other++)
+	{
+		if (NativeInput_GetPlayerController(other, nullptr, 0, &type))
 		{
 			return type;
 		}
@@ -605,9 +644,9 @@ void FormatKey(int scancode, char *out, size_t outSize)
 }
 
 // One rebindable cell: shows the binding, or a prompt while capturing it.
-void BindingCell(int button, int column, const char *text, float width)
+void BindingCell(int player, int button, int column, const char *text, float width)
 {
-	const bool capturing = s_capture.active && (s_capture.button == button) && (s_capture.column == column);
+	const bool capturing = s_capture.active && (s_capture.player == player) && (s_capture.button == button) && (s_capture.column == column);
 	char label[96];
 	snprintf(label, sizeof(label), "%s##bind%d_%d", capturing ? (column == BIND_GAMEPAD ? "Press a button..." : "Press a key...") : text, button, column);
 
@@ -623,57 +662,75 @@ void BindingCell(int button, int column, const char *text, float width)
 	}
 	if (ImGui::Button(label, ImVec2(width, 0.0f)))
 	{
-		StartCapture(button, column);
+		StartCapture(player, button, column);
 	}
 	ImGui::PopStyleColor(2);
 }
 
-void DrawPlayersSection()
+void DrawControllerSection(int player)
 {
-	NativeInputSettings &input = g_settings.input;
-	const float comboWidth = ImGui::GetFontSize() * 12.0f;
+	NativePlayerInputSettings &input = g_settings.input.players[player];
+	const float comboWidth = ImGui::GetFontSize() * 16.0f;
 
-	SectionHeading("Players");
+	SectionHeading("Controller");
 
+	char current[96];
+	const bool connected = NativeInput_GetPlayerController(player, current, sizeof(current), nullptr) != 0;
+	if (!connected)
+	{
+		snprintf(current, sizeof(current), "None");
+	}
+
+	// Picking a controller another player has swaps the two players' controllers.
 	ImGui::SetNextItemWidth(comboWidth);
-	if (ImGui::Combo("Keyboard controls", &input.keyboardPlayer, kPlayerNames, NATIVE_INPUT_PLAYERS))
+	if (ImGui::BeginCombo("Controller", current))
 	{
-		CommitInputSettings();
+		for (int other = 0; other < NATIVE_INPUT_PLAYERS; other++)
+		{
+			char name[96];
+			if (!NativeInput_GetPlayerController(other, name, sizeof(name), nullptr))
+			{
+				continue;
+			}
+			char label[128];
+			if (other == player)
+			{
+				snprintf(label, sizeof(label), "%s##pad%d", name, other);
+			}
+			else
+			{
+				snprintf(label, sizeof(label), "%s  (from %s)##pad%d", name, kPlayerNames[other], other);
+			}
+			if (ImGui::Selectable(label, other == player) && (other != player))
+			{
+				NativeInput_SwapPlayers(player, other);
+			}
+		}
+		ImGui::EndCombo();
 	}
-	HelpTooltip("The keyboard drives this player, alongside any controller assigned to the same player.");
+	HelpTooltip("The controller this player uses. Taking one from another player swaps their controllers. "
+	            "The choice is remembered, and the controller rejoins this player when it reconnects.");
 
-	bool anyController = false;
-	for (int player = 0; player < NATIVE_INPUT_PLAYERS; player++)
+	if (!connected && (input.controllerId[0] != '\0'))
 	{
-		char name[96];
-		if (!NativeInput_GetPlayerController(player, name, sizeof(name), nullptr))
-		{
-			continue;
-		}
-		anyController = true;
-
-		int target = player;
-		char comboId[32];
-		snprintf(comboId, sizeof(comboId), "##controllerplayer%d", player);
-		ImGui::SetNextItemWidth(comboWidth);
-		if (ImGui::Combo(comboId, &target, kPlayerNames, NATIVE_INPUT_PLAYERS) && (target != player))
-		{
-			NativeInput_SwapPlayers(player, target);
-		}
+		ImGui::TextDisabled("Remembered: %s (not connected)", (input.controllerName[0] != '\0') ? input.controllerName : input.controllerId);
 		ImGui::SameLine();
-		ImGui::TextUnformatted(name);
+		char forget[32];
+		snprintf(forget, sizeof(forget), "Forget##forget%d", player);
+		if (ImGui::SmallButton(forget))
+		{
+			input.controllerId[0] = '\0';
+			input.controllerName[0] = '\0';
+			CommitInputSettings();
+		}
+		HelpTooltip("Stop keeping this player free for that controller.");
 	}
-	if (!anyController)
-	{
-		ImGui::TextDisabled("No controllers connected.");
-	}
-	ImGui::TextDisabled("Home / PS button or L3 + R3 opens this menu from a controller.");
 }
 
-void DrawBindingsSection()
+void DrawBindingsSection(int player)
 {
-	NativeInputSettings &input = g_settings.input;
-	const int padType = LabelGamepadType();
+	NativePlayerInputSettings &input = g_settings.input.players[player];
+	const int padType = LabelGamepadType(player);
 
 	SectionHeading("Bindings");
 	ImGui::TextDisabled("Click a binding, then press the new key or button. Esc cancels, Backspace clears.");
@@ -702,20 +759,38 @@ void DrawBindingsSection()
 			{
 				ImGui::TableSetColumnIndex(1 + key);
 				FormatKey(input.keyboard[button][key], text, sizeof(text));
-				BindingCell(button, key, text, cellWidth);
+				BindingCell(player, button, key, text, cellWidth);
 			}
 
 			ImGui::TableSetColumnIndex(3);
 			FormatPadBinding(input.gamepad[button], padType, text, sizeof(text));
-			BindingCell(button, BIND_GAMEPAD, text, cellWidth * 1.2f);
+			BindingCell(player, button, BIND_GAMEPAD, text, cellWidth * 1.2f);
 		}
 		ImGui::EndTable();
 	}
 }
 
-void DrawAnalogSection()
+bool KeyUsedByOtherPlayer(int player, int scancode)
 {
-	NativeInputSettings &input = g_settings.input;
+	for (int other = 0; (scancode != SDL_SCANCODE_UNKNOWN) && (other < NATIVE_INPUT_PLAYERS); other++)
+	{
+		for (int button = 0; (other != player) && (button < NATIVE_PAD_BUTTON_COUNT); button++)
+		{
+			for (int key = 0; key < NATIVE_KEY_BINDINGS; key++)
+			{
+				if (g_settings.input.players[other].keyboard[button][key] == scancode)
+				{
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+void DrawAnalogSection(int player)
+{
+	NativePlayerInputSettings &input = g_settings.input.players[player];
 	const float sliderWidth = ImGui::GetFontSize() * 12.0f;
 	bool changed = false;
 
@@ -736,12 +811,52 @@ void DrawAnalogSection()
 	ImGui::EndDisabled();
 
 	ImGui::Spacing();
-	if (ImGui::Button("Reset input settings"))
+	if (ImGui::Button("Reset this player"))
 	{
-		NativeSettings_SetInputDefaults(&input);
+		// Keeps the remembered controller; bindings and analog settings go back to the defaults.
+		NativePlayerInputSettings defaults;
+		NativeSettings_SetPlayerInputDefaults(&defaults, player);
+		memcpy(defaults.controllerId, input.controllerId, sizeof(defaults.controllerId));
+		memcpy(defaults.controllerName, input.controllerName, sizeof(defaults.controllerName));
+		input = defaults;
+		// Default keys another player has taken stay with that player.
+		for (int button = 0; button < NATIVE_PAD_BUTTON_COUNT; button++)
+		{
+			for (int key = 0; key < NATIVE_KEY_BINDINGS; key++)
+			{
+				if (KeyUsedByOtherPlayer(player, input.keyboard[button][key]))
+				{
+					input.keyboard[button][key] = SDL_SCANCODE_UNKNOWN;
+				}
+			}
+		}
 		changed = true;
 	}
-	HelpTooltip("Restores the default keyboard and controller layout and analog settings.");
+	HelpTooltip(player == 0 ? "Restores the default keyboard and controller layout and analog settings for this player."
+	                        : "Restores the default controller layout and analog settings, and clears this player's keys.");
+
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
+	char copyId[32];
+	snprintf(copyId, sizeof(copyId), "##copyfrom%d", player);
+	if (ImGui::BeginCombo(copyId, "Copy controller layout from", ImGuiComboFlags_HeightRegular))
+	{
+		for (int other = 0; other < NATIVE_INPUT_PLAYERS; other++)
+		{
+			if ((other != player) && ImGui::Selectable(kPlayerNames[other]))
+			{
+				const NativePlayerInputSettings &source = g_settings.input.players[other];
+				memcpy(input.gamepad, source.gamepad, sizeof(input.gamepad));
+				input.stickDeadzone = source.stickDeadzone;
+				input.analogPressPoint = source.analogPressPoint;
+				input.rumble = source.rumble;
+				input.rumbleStrength = source.rumbleStrength;
+				changed = true;
+			}
+		}
+		ImGui::EndCombo();
+	}
+	HelpTooltip("Copies another player's controller bindings and analog settings. Keys stay as they are: each key drives one player.");
 
 	if (changed)
 	{
@@ -751,9 +866,28 @@ void DrawAnalogSection()
 
 void DrawInputTab()
 {
-	DrawPlayersSection();
-	DrawBindingsSection();
-	DrawAnalogSection();
+	ImGui::TextDisabled("Each player has their own controller, keys and settings. One keyboard can drive several players.");
+
+	if (ImGui::BeginTabBar("##players"))
+	{
+		for (int player = 0; player < NATIVE_INPUT_PLAYERS; player++)
+		{
+			const ImGuiTabItemFlags flags = (s_selectPlayerTab == player) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+			if (ImGui::BeginTabItem(kPlayerNames[player], nullptr, flags))
+			{
+				ImGui::PushID(player);
+				DrawControllerSection(player);
+				DrawBindingsSection(player);
+				DrawAnalogSection(player);
+				ImGui::PopID();
+				ImGui::EndTabItem();
+			}
+		}
+		ImGui::EndTabBar();
+	}
+	s_selectPlayerTab = -1;
+
+	ImGui::TextDisabled("Home / PS button or L3 + R3 opens this menu from a controller. The game keeps running for everyone else.");
 }
 
 void DrawAboutTab()
@@ -789,7 +923,7 @@ void DrawTitle()
 	ImGui::PopStyleColor();
 	ImGui::PopFont();
 
-	const char *hint = "F1 / Esc to close";
+	const char *hint = (s_menuController != 0) ? "Home / L3 + R3 to close" : "F1 / Esc to close";
 	ImGui::SameLine();
 	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(hint).x);
 	ImGui::AlignTextToFramePadding();
@@ -834,7 +968,7 @@ void DrawMainWindow()
 
 	if (!open)
 	{
-		SetMenuOpen(false);
+		SetMenuOpen(false, 0);
 	}
 }
 
@@ -869,7 +1003,16 @@ void UpdateInputCapture()
 	if (s_menuOpen)
 	{
 		io.ConfigFlags &= ~(ImGuiConfigFlags_NoMouseCursorChange | ImGuiConfigFlags_NoMouse);
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+		// Opened from a controller, the keyboard stays with the game.
+		if (s_menuController == 0)
+		{
+			io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+		}
+		else
+		{
+			io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
+		}
 	}
 	else
 	{
@@ -909,6 +1052,7 @@ extern "C" int NativeUI_Init(SDL_Window *window, SDL_GLContext context)
 		return 0;
 	}
 
+	SetMenuController(0);
 	s_initialized = true;
 	return 1;
 }
@@ -931,6 +1075,12 @@ extern "C" void NativeUI_ProcessEvent(const SDL_Event *event)
 	if (!s_initialized)
 	{
 		return;
+	}
+
+	// Forget the menu's controller before the input layer closes it.
+	if ((event->type == SDL_EVENT_GAMEPAD_REMOVED) && (event->gdevice.which == s_menuController))
+	{
+		SetMenuController(0);
 	}
 
 	// A pending rebind swallows the key or button it is waiting for, so the menu
@@ -982,5 +1132,34 @@ extern "C" int NativeUI_IsMenuOpen(void)
 
 extern "C" void NativeUI_ToggleMenu(void)
 {
-	SetMenuOpen(!s_menuOpen);
+	SetMenuOpen(!s_menuOpen, 0);
+}
+
+extern "C" void NativeUI_ToggleMenuFromController(unsigned int instanceId)
+{
+	const SDL_JoystickID controller = (SDL_JoystickID)instanceId;
+	if (s_menuOpen && (s_menuController == controller))
+	{
+		SetMenuOpen(false, 0);
+		return;
+	}
+
+	SetMenuOpen(true, controller);
+	for (int player = 0; player < NATIVE_INPUT_PLAYERS; player++)
+	{
+		if ((SDL_JoystickID)NativeInput_GetPlayerControllerId(player) == controller)
+		{
+			s_selectPlayerTab = player;
+		}
+	}
+}
+
+extern "C" int NativeUI_MenuOwnsKeyboard(void)
+{
+	return (s_menuOpen && (s_menuController == 0)) ? 1 : 0;
+}
+
+extern "C" unsigned int NativeUI_GetMenuController(void)
+{
+	return s_menuOpen ? (unsigned int)s_menuController : 0u;
 }

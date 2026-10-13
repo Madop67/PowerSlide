@@ -10,8 +10,11 @@ extern "C" {
 // Returns 1 and fills the controller's name and SDL_GamepadType when a
 // controller drives player slot `player` (0-3).
 int NativeInput_GetPlayerController(int player, char *name, int nameSize, int *gamepadType);
-// Swaps which controllers drive two player slots.
+// Swaps which controllers drive two player slots; each player keeps its bindings and the
+// remembered controllers move with the swap.
 void NativeInput_SwapPlayers(int playerA, int playerB);
+// SDL joystick instance id of the controller driving player slot `player`, or 0.
+int NativeInput_GetPlayerControllerId(int player);
 // Returns the player slot an SDL joystick instance drives, or -1.
 int NativeInput_IsGamepadEventForPlayer(unsigned int instanceId);
 

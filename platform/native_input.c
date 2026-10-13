@@ -21,10 +21,9 @@
 #define NATIVE_INPUT_PAD_DISCONNECT        0xff
 #define NATIVE_INPUT_AXIS_DEADZONE         500
 #define NATIVE_INPUT_AXIS_MAX              32767
-#define NATIVE_INPUT_DEFAULT_KEYBOARD_SLOT 0
 // NOTE(aalhendi): Little-endian tag `CTRI` = CTR native Input snapshot.
 #define NATIVE_INPUT_STATE_MAGIC           0x49525443
-#define NATIVE_INPUT_STATE_VERSION         1
+#define NATIVE_INPUT_STATE_VERSION         2
 
 // NOTE(aalhendi): Native input preserves behavior from PsyCross's
 // MIT-licensed pad implementation while moving host ownership into ctr-native.
@@ -44,7 +43,6 @@ struct NativeInputControllerStateSnapshot
 	struct PlatformInputPadSnapshot snapshot;
 	s32 analogEnabled;
 	s32 switchingAnalog;
-	s32 controllerToSlotMapping;
 };
 
 struct NativeInputStateSnapshot
@@ -52,14 +50,11 @@ struct NativeInputStateSnapshot
 	u32 magic;
 	u32 version;
 	u32 size;
-	s32 keyboardControllerSlot;
 	s32 lastActiveControllerSlot;
 	s32 installedSnapshotsActive;
 	struct PlatformInputPadSnapshot installedSnapshots[NATIVE_INPUT_MAX_CONTROLLERS];
 	struct NativeInputControllerStateSnapshot controllers[NATIVE_INPUT_MAX_CONTROLLERS];
 };
-
-global_variable s32 s_controllerToSlotMapping[NATIVE_INPUT_MAX_CONTROLLERS] = {-1, -1, -1, -1};
 
 global_variable struct NativeInputController s_controllers[NATIVE_INPUT_MAX_CONTROLLERS];
 global_variable struct PlatformInputPadSnapshot s_installedSnapshots[NATIVE_INPUT_MAX_CONTROLLERS];
@@ -67,7 +62,6 @@ global_variable u8 *s_padSlotData[NATIVE_INPUT_PHYSICAL_SLOT_COUNT];
 global_variable const bool *s_keyboardState;
 global_variable s32 s_inputInitialized;
 global_variable s32 s_installedSnapshotsActive;
-global_variable s32 s_keyboardControllerSlot = NATIVE_INPUT_DEFAULT_KEYBOARD_SLOT;
 global_variable s32 s_lastActiveControllerSlot = -1;
 
 extern s32 g_padCommEnable;
@@ -303,7 +297,7 @@ internal void NativeInput_ApplyController(s32 slot)
 {
 	struct NativeInputController *nativeController = &s_controllers[slot];
 	struct PlatformInputPadSnapshot *snapshot = &nativeController->snapshot;
-	const struct NativeInputSettings *settings = &g_settings.input;
+	const struct NativePlayerInputSettings *settings = &g_settings.input.players[slot];
 	SDL_Gamepad *controller = nativeController->controller;
 	u16 buttons = 0xffff;
 
@@ -363,9 +357,27 @@ internal void NativeInput_ApplyController(s32 slot)
 	snapshot->analog[3] = NativeInput_AxisToByte(leftY);
 }
 
-internal u16 NativeInput_ReadKeyboard(void)
+internal s32 NativeInput_PlayerHasKeys(s32 player)
 {
-	const struct NativeInputSettings *settings = &g_settings.input;
+	const struct NativePlayerInputSettings *settings = &g_settings.input.players[player];
+
+	for (s32 button = 0; button < NATIVE_PAD_BUTTON_COUNT; button++)
+	{
+		for (s32 i = 0; i < NATIVE_KEY_BINDINGS; i++)
+		{
+			if (settings->keyboard[button][i] != SDL_SCANCODE_UNKNOWN)
+			{
+				return 1;
+			}
+		}
+	}
+
+	return 0;
+}
+
+internal u16 NativeInput_ReadKeyboard(s32 player)
+{
+	const struct NativePlayerInputSettings *settings = &g_settings.input.players[player];
 	u16 buttons = 0xffff;
 
 	if (s_keyboardState == NULL)
@@ -398,11 +410,12 @@ internal s32 NativeInput_KeyboardSuppressed(void)
 	return s_keyboardState[SDL_SCANCODE_RALT] || s_keyboardState[SDL_SCANCODE_LALT];
 }
 
-internal void NativeInput_ApplyKeyboard(s32 slot, u16 keyboardButtons)
+// A player with any key bound counts as connected, alongside any controller in the slot.
+internal void NativeInput_ApplyKeyboard(s32 slot, s32 readKeys)
 {
 	struct PlatformInputPadSnapshot *snapshot = &s_controllers[slot].snapshot;
 
-	if (slot != s_keyboardControllerSlot)
+	if (!NativeInput_PlayerHasKeys(slot))
 	{
 		return;
 	}
@@ -414,8 +427,11 @@ internal void NativeInput_ApplyKeyboard(s32 slot, u16 keyboardButtons)
 		snapshot->id = NATIVE_INPUT_PAD_DIGITAL;
 	}
 
-	u16 buttons = NativeInput_GetSnapshotButtons(snapshot);
-	NativeInput_SetSnapshotButtons(snapshot, buttons & keyboardButtons);
+	if (readKeys)
+	{
+		u16 buttons = NativeInput_GetSnapshotButtons(snapshot);
+		NativeInput_SetSnapshotButtons(snapshot, buttons & NativeInput_ReadKeyboard(slot));
+	}
 }
 
 internal s32 NativeInput_FindActiveControllerSlot(void)
@@ -436,6 +452,47 @@ internal s32 NativeInput_FindActiveControllerSlot(void)
 	return -1;
 }
 
+// Identifies a controller model across sessions: "vvvv:pppp" USB vendor and product ids.
+internal void NativeInput_FormatControllerId(SDL_JoystickID instanceId, char *out, size_t outSize)
+{
+	SDL_snprintf(out, outSize, "%04x:%04x", SDL_GetGamepadVendorForID(instanceId), SDL_GetGamepadProductForID(instanceId));
+}
+
+// Remembers the controller now in `slot` as that player's controller.
+internal void NativeInput_RememberController(s32 slot)
+{
+	struct NativePlayerInputSettings *player = &g_settings.input.players[slot];
+	SDL_Gamepad *controller = s_controllers[slot].controller;
+
+	if (controller == NULL)
+	{
+		return;
+	}
+
+	char id[NATIVE_CONTROLLER_ID_MAX];
+	NativeInput_FormatControllerId(s_controllers[slot].instanceId, id, sizeof(id));
+	const char *name = SDL_GetGamepadName(controller);
+	char cleanName[NATIVE_CONTROLLER_NAME_MAX];
+	SDL_snprintf(cleanName, sizeof(cleanName), "%s", (name != NULL) ? name : "Controller");
+	for (char *c = cleanName; *c != '\0'; c++)
+	{
+		// The settings file quotes names and has no escapes.
+		if (*c == '"')
+		{
+			*c = '\'';
+		}
+	}
+
+	if ((strcmp(player->controllerId, id) == 0) && (strcmp(player->controllerName, cleanName) == 0))
+	{
+		return;
+	}
+
+	SDL_snprintf(player->controllerId, sizeof(player->controllerId), "%s", id);
+	SDL_snprintf(player->controllerName, sizeof(player->controllerName), "%s", cleanName);
+	NativeSettings_Save();
+}
+
 internal void NativeInput_SwapControllerSlots(s32 slotA, s32 slotB)
 {
 	if (!NativeInput_IsValidControllerSlot(slotA) || !NativeInput_IsValidControllerSlot(slotB) || (slotA == slotB))
@@ -447,9 +504,18 @@ internal void NativeInput_SwapControllerSlots(s32 slotA, s32 slotB)
 	s_controllers[slotA] = s_controllers[slotB];
 	s_controllers[slotB] = controller;
 
-	s32 mapping = s_controllerToSlotMapping[slotA];
-	s_controllerToSlotMapping[slotA] = s_controllerToSlotMapping[slotB];
-	s_controllerToSlotMapping[slotB] = mapping;
+	// The remembered controllers move with them; each player keeps its own bindings.
+	struct NativePlayerInputSettings *playerA = &g_settings.input.players[slotA];
+	struct NativePlayerInputSettings *playerB = &g_settings.input.players[slotB];
+	char id[NATIVE_CONTROLLER_ID_MAX];
+	char name[NATIVE_CONTROLLER_NAME_MAX];
+	memcpy(id, playerA->controllerId, sizeof(id));
+	memcpy(name, playerA->controllerName, sizeof(name));
+	memcpy(playerA->controllerId, playerB->controllerId, sizeof(id));
+	memcpy(playerA->controllerName, playerB->controllerName, sizeof(name));
+	memcpy(playerB->controllerId, id, sizeof(id));
+	memcpy(playerB->controllerName, name, sizeof(name));
+	NativeSettings_Save();
 
 	if (s_lastActiveControllerSlot == slotA)
 	{
@@ -461,13 +527,40 @@ internal void NativeInput_SwapControllerSlots(s32 slotA, s32 slotB)
 	}
 }
 
-internal s32 NativeInput_FindSlotForDeviceIndex(Sint32 deviceIndex)
+// Picks the player a newly connected controller drives: the free player that remembers
+// it, else a free player that remembers no controller, else any free player. With
+// `rememberedOnly`, only the first choice is tried.
+internal s32 NativeInput_FindSlotForController(SDL_JoystickID instanceId, s32 rememberedOnly)
 {
+	char id[NATIVE_CONTROLLER_ID_MAX];
 	s32 slot;
+
+	NativeInput_FormatControllerId(instanceId, id, sizeof(id));
 
 	for (slot = 0; slot < NATIVE_INPUT_MAX_CONTROLLERS; slot++)
 	{
-		if (s_controllerToSlotMapping[slot] == deviceIndex)
+		if (s_controllers[slot].instanceId == instanceId)
+		{
+			return -1;
+		}
+	}
+
+	for (slot = 0; slot < NATIVE_INPUT_MAX_CONTROLLERS; slot++)
+	{
+		if ((s_controllers[slot].controller == NULL) && (strcmp(g_settings.input.players[slot].controllerId, id) == 0))
+		{
+			return slot;
+		}
+	}
+
+	if (rememberedOnly)
+	{
+		return -1;
+	}
+
+	for (slot = 0; slot < NATIVE_INPUT_MAX_CONTROLLERS; slot++)
+	{
+		if ((s_controllers[slot].controller == NULL) && (g_settings.input.players[slot].controllerId[0] == '\0'))
 		{
 			return slot;
 		}
@@ -475,7 +568,7 @@ internal s32 NativeInput_FindSlotForDeviceIndex(Sint32 deviceIndex)
 
 	for (slot = 0; slot < NATIVE_INPUT_MAX_CONTROLLERS; slot++)
 	{
-		if ((s_controllerToSlotMapping[slot] < 0) && (s_controllers[slot].controller == NULL))
+		if (s_controllers[slot].controller == NULL)
 		{
 			return slot;
 		}
@@ -536,6 +629,7 @@ internal void NativeInput_OpenController(SDL_JoystickID instanceId, s32 slot)
 	controller->instanceId = joystick != NULL ? SDL_GetJoystickID(joystick) : instanceId;
 	controller->analogEnabled = 1;
 	controller->switchingAnalog = 0;
+	NativeInput_RememberController(slot);
 }
 
 internal void NativeInput_OpenKnownControllers(void)
@@ -543,13 +637,17 @@ internal void NativeInput_OpenKnownControllers(void)
 	s32 count = 0;
 
 	SDL_JoystickID *gamepads = SDL_GetGamepads(&count);
-	for (s32 i = 0; i < count; i++)
+	// Remembered controllers first, so an unknown one can't take their player.
+	for (s32 pass = 0; pass < 2; pass++)
 	{
-		s32 slot = NativeInput_FindSlotForDeviceIndex(gamepads[i]);
-
-		if (slot >= 0)
+		for (s32 i = 0; i < count; i++)
 		{
-			NativeInput_OpenController(gamepads[i], slot);
+			s32 slot = NativeInput_FindSlotForController(gamepads[i], pass == 0);
+
+			if (slot >= 0)
+			{
+				NativeInput_OpenController(gamepads[i], slot);
+			}
 		}
 	}
 	SDL_free(gamepads);
@@ -571,7 +669,6 @@ int Platform_InputInit(void)
 		s_installedSnapshots[slot] = s_controllers[slot].snapshot;
 	}
 
-	Platform_ApplyInputSettings();
 	s_lastActiveControllerSlot = -1;
 	s_installedSnapshotsActive = 0;
 	s_keyboardState = SDL_GetKeyboardState(NULL);
@@ -603,7 +700,6 @@ void Platform_InputShutdown(void)
 
 	s_inputInitialized = 0;
 	s_installedSnapshotsActive = 0;
-	s_keyboardControllerSlot = NATIVE_INPUT_DEFAULT_KEYBOARD_SLOT;
 	s_lastActiveControllerSlot = -1;
 	memset(s_padSlotData, 0, sizeof(s_padSlotData));
 	s_keyboardState = NULL;
@@ -630,23 +726,31 @@ void Platform_InputUpdate(void)
 	}
 
 	SDL_PumpEvents();
-	// While the settings menu is open the game sees released buttons and centred
-	// sticks, but pads stay connected so it does not raise a disconnect pause.
-	const s32 menuCapturesInput = NativeUI_IsMenuOpen();
-	u16 keyboardButtons = (menuCapturesInput || NativeInput_KeyboardSuppressed()) ? 0xffff : NativeInput_ReadKeyboard();
+	// The game keeps running under the settings menu. Only the device driving the menu
+	// is held: the keyboard, or the controller that opened it (every controller while a
+	// controller binding is being captured). A held pad reads released buttons and
+	// centred sticks but stays connected, so the game raises no disconnect pause.
+	const s32 readKeys = !NativeUI_MenuOwnsKeyboard() && !NativeUI_IsCapturingBinding() && !NativeInput_KeyboardSuppressed();
+	const s32 holdAllControllers = NativeUI_IsCapturingBinding();
+	const SDL_JoystickID menuController = (SDL_JoystickID)NativeUI_GetMenuController();
 
 	for (s32 slot = 0; slot < NATIVE_INPUT_MAX_CONTROLLERS; slot++)
 	{
-		NativeInput_ResetSnapshot(slot);
-		NativeInput_ApplyController(slot);
-		NativeInput_ApplyKeyboard(slot, keyboardButtons);
+		struct NativeInputController *controller = &s_controllers[slot];
+		const s32 holdController = (controller->controller != NULL) && (holdAllControllers || ((menuController != 0) && (controller->instanceId == menuController)));
 
-		if (menuCapturesInput)
+		NativeInput_ResetSnapshot(slot);
+		if (!holdController)
 		{
-			struct PlatformInputPadSnapshot *snapshot = &s_controllers[slot].snapshot;
-			NativeInput_SetSnapshotButtons(snapshot, 0xffff);
-			memset(snapshot->analog, 0x80, sizeof(snapshot->analog));
+			NativeInput_ApplyController(slot);
 		}
+		else if (controller->controller != NULL)
+		{
+			controller->snapshot.connected = 1;
+			controller->snapshot.status = 0;
+			controller->snapshot.id = controller->analogEnabled ? NATIVE_INPUT_PAD_ANALOG : NATIVE_INPUT_PAD_DIGITAL;
+		}
+		NativeInput_ApplyKeyboard(slot, readKeys);
 	}
 	NativeInput_WritePadBus();
 }
@@ -658,10 +762,10 @@ void Platform_InputControllerAdded(int deviceIndex)
 		return;
 	}
 
-	s32 slot = NativeInput_FindSlotForDeviceIndex(deviceIndex);
+	s32 slot = NativeInput_FindSlotForController((SDL_JoystickID)deviceIndex, 0);
 	if (slot >= 0)
 	{
-		NativeInput_OpenController(deviceIndex, slot);
+		NativeInput_OpenController((SDL_JoystickID)deviceIndex, slot);
 	}
 }
 
@@ -677,21 +781,34 @@ void Platform_InputControllerRemoved(int instanceId)
 	}
 }
 
+// Debug hotkey: rotates every player's keys to the next player (P4's go to P1). With the
+// default layout this moves the keyboard to the next player; returns the first player with keys.
 int Platform_InputCycleKeyboardController(void)
 {
-	s_keyboardControllerSlot = NativeInput_NextControllerSlot(s_keyboardControllerSlot);
-	g_settings.input.keyboardPlayer = s_keyboardControllerSlot;
-	return s_keyboardControllerSlot + 1;
+	struct NativePlayerInputSettings *players = g_settings.input.players;
+	s32 last[NATIVE_PAD_BUTTON_COUNT][NATIVE_KEY_BINDINGS];
+
+	memcpy(last, players[NATIVE_INPUT_PLAYERS - 1].keyboard, sizeof(last));
+	for (s32 player = NATIVE_INPUT_PLAYERS - 1; player > 0; player--)
+	{
+		memcpy(players[player].keyboard, players[player - 1].keyboard, sizeof(last));
+	}
+	memcpy(players[0].keyboard, last, sizeof(last));
+	NativeSettings_Save();
+
+	for (s32 player = 0; player < NATIVE_INPUT_PLAYERS; player++)
+	{
+		if (NativeInput_PlayerHasKeys(player))
+		{
+			return player + 1;
+		}
+	}
+	return 0;
 }
 
 void Platform_ApplyInputSettings(void)
 {
-	s32 player = g_settings.input.keyboardPlayer;
-	if (!NativeInput_IsValidControllerSlot(player))
-	{
-		player = NATIVE_INPUT_DEFAULT_KEYBOARD_SLOT;
-	}
-	s_keyboardControllerSlot = player;
+	// Bindings are read from g_settings every frame; nothing is cached.
 }
 
 //------------------------------------------------------------------------------------------------------------------------
@@ -721,6 +838,15 @@ void NativeInput_SwapPlayers(int playerA, int playerB)
 {
 	NativeInput_SwapControllerSlots(playerA, playerB);
 	NativeInput_WritePadBus();
+}
+
+int NativeInput_GetPlayerControllerId(int player)
+{
+	if (!NativeInput_IsValidControllerSlot(player) || (s_controllers[player].controller == NULL))
+	{
+		return 0;
+	}
+	return (int)s_controllers[player].instanceId;
 }
 
 int NativeInput_IsGamepadEventForPlayer(unsigned int instanceId)
@@ -847,7 +973,6 @@ int Platform_InputCaptureState(void *dst, int dstSize)
 	snapshot->magic = NATIVE_INPUT_STATE_MAGIC;
 	snapshot->version = NATIVE_INPUT_STATE_VERSION;
 	snapshot->size = sizeof(*snapshot);
-	snapshot->keyboardControllerSlot = s_keyboardControllerSlot;
 	snapshot->lastActiveControllerSlot = s_lastActiveControllerSlot;
 	snapshot->installedSnapshotsActive = s_installedSnapshotsActive;
 
@@ -857,7 +982,6 @@ int Platform_InputCaptureState(void *dst, int dstSize)
 		snapshot->controllers[slot].snapshot = s_controllers[slot].snapshot;
 		snapshot->controllers[slot].analogEnabled = s_controllers[slot].analogEnabled;
 		snapshot->controllers[slot].switchingAnalog = s_controllers[slot].switchingAnalog;
-		snapshot->controllers[slot].controllerToSlotMapping = s_controllerToSlotMapping[slot];
 	}
 
 	return 1;
@@ -873,10 +997,6 @@ int Platform_InputRestoreState(const void *src, int srcSize)
 		return 0;
 	}
 	if ((snapshot->magic != NATIVE_INPUT_STATE_MAGIC) || (snapshot->version != NATIVE_INPUT_STATE_VERSION) || (snapshot->size != sizeof(*snapshot)))
-	{
-		return 0;
-	}
-	if (!NativeInput_IsValidControllerSlot(snapshot->keyboardControllerSlot))
 	{
 		return 0;
 	}
@@ -898,13 +1018,8 @@ int Platform_InputRestoreState(const void *src, int srcSize)
 		{
 			return 0;
 		}
-		if (snapshot->controllers[slot].controllerToSlotMapping < -1)
-		{
-			return 0;
-		}
 	}
 
-	s_keyboardControllerSlot = snapshot->keyboardControllerSlot;
 	s_lastActiveControllerSlot = snapshot->lastActiveControllerSlot;
 	s_installedSnapshotsActive = snapshot->installedSnapshotsActive != 0;
 
@@ -914,7 +1029,6 @@ int Platform_InputRestoreState(const void *src, int srcSize)
 		s_controllers[slot].snapshot = snapshot->controllers[slot].snapshot;
 		s_controllers[slot].analogEnabled = snapshot->controllers[slot].analogEnabled;
 		s_controllers[slot].switchingAnalog = snapshot->controllers[slot].switchingAnalog;
-		s_controllerToSlotMapping[slot] = snapshot->controllers[slot].controllerToSlotMapping;
 	}
 	NativeInput_WritePadBus();
 
@@ -950,12 +1064,13 @@ void Platform_InputPadVibrate(int port, unsigned char *table, int len)
 	}
 
 	struct NativeInputController *controller = &s_controllers[slot];
-	if ((controller->controller == NULL) || !g_settings.input.rumble)
+	const struct NativePlayerInputSettings *settings = &g_settings.input.players[slot];
+	if ((controller->controller == NULL) || !settings->rumble)
 	{
 		return;
 	}
 
-	const u32 strength = (u32)SDL_clamp(g_settings.input.rumbleStrength, 0, 100);
+	const u32 strength = (u32)SDL_clamp(settings->rumbleStrength, 0, 100);
 	u16 freqHigh = (u16)((table[0] * 255u * strength) / 100u);
 	u16 freqLow = len > 1 ? (u16)((table[1] * 255u * strength) / 100u) : 0;
 

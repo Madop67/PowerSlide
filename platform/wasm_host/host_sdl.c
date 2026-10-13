@@ -863,6 +863,18 @@ u32 w2c_env_SDL_GetGamepadType(struct w2c_env *env, u32 gamepad)
 	return (u32)SDL_GetGamepadType(H2P(SDL_Gamepad, gamepad));
 }
 
+u32 w2c_env_SDL_GetGamepadVendorForID(struct w2c_env *env, u32 instanceId)
+{
+	(void)env;
+	return SDL_GetGamepadVendorForID((SDL_JoystickID)instanceId);
+}
+
+u32 w2c_env_SDL_GetGamepadProductForID(struct w2c_env *env, u32 instanceId)
+{
+	(void)env;
+	return SDL_GetGamepadProductForID((SDL_JoystickID)instanceId);
+}
+
 u32 w2c_env_SDL_GetGamepadStringForButton(struct w2c_env *env, u32 button)
 {
 	return HostMem_StringToGuest(env, SDL_GetGamepadStringForButton((SDL_GamepadButton)button));

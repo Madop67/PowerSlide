@@ -34,9 +34,11 @@ SDL_GetGamepadButtonLabelForType
 SDL_GetGamepadFromID
 SDL_GetGamepadJoystick
 SDL_GetGamepadName
+SDL_GetGamepadProductForID
 SDL_GetGamepadStringForAxis
 SDL_GetGamepadStringForButton
 SDL_GetGamepadType
+SDL_GetGamepadVendorForID
 SDL_GetGamepads
 SDL_GetGlobalMouseState
 SDL_GetHint
