@@ -4,6 +4,7 @@
 // draw whether or not the menu is open.
 
 #include <platform/native_ui.h>
+#include <platform/native_input_config.h>
 #include <platform/native_product.h>
 #include <platform/native_settings.h>
 
@@ -194,6 +195,8 @@ void UpdateStyleScale()
 	}
 }
 
+void CancelCapture();
+
 void SetMenuOpen(bool open)
 {
 	if (s_menuOpen == open)
@@ -201,6 +204,7 @@ void SetMenuOpen(bool open)
 		return;
 	}
 	s_menuOpen = open;
+	CancelCapture();
 	Platform_UpdateCursorVisibility();
 }
 
@@ -340,6 +344,418 @@ void DrawVideoTab()
 	}
 }
 
+//------------------------------------------------------------------------------------------------------------------------
+// Input tab
+
+constexpr const char *kPadButtonLabels[NATIVE_PAD_BUTTON_COUNT] = {
+	"Cross", "Circle", "Square", "Triangle", "L1", "R1", "L2", "R2",
+	"D-pad up", "D-pad down", "D-pad left", "D-pad right", "Start", "Select", "L3", "R3",
+};
+constexpr const char *kPlayerNames[NATIVE_INPUT_PLAYERS] = {"Player 1", "Player 2", "Player 3", "Player 4"};
+
+// Columns of the bindings table that can be rebound.
+enum BindColumn
+{
+	BIND_KEY_PRIMARY = 0,
+	BIND_KEY_ALTERNATE = 1,
+	BIND_GAMEPAD = 2,
+};
+
+constexpr Uint64 kCaptureIgnoreMs = 250;
+constexpr Uint64 kCaptureTimeoutMs = 6000;
+constexpr Sint16 kCaptureAxisThreshold = 20000;
+
+struct BindingCapture
+{
+	bool active = false;
+	int button = 0;
+	int column = 0;
+	Uint64 startedMs = 0;
+};
+
+BindingCapture s_capture;
+
+void CancelCapture()
+{
+	s_capture.active = false;
+}
+
+void CommitInputSettings()
+{
+	Platform_ApplyInputSettings();
+	NativeSettings_Save();
+}
+
+void StartCapture(int button, int column)
+{
+	s_capture.active = true;
+	s_capture.button = button;
+	s_capture.column = column;
+	s_capture.startedMs = SDL_GetTicks();
+}
+
+// A key or pad input can only drive one PS1 button; binding it elsewhere unbinds it here.
+void AssignKey(int button, int slot, int scancode)
+{
+	NativeInputSettings &input = g_settings.input;
+	if (scancode != SDL_SCANCODE_UNKNOWN)
+	{
+		for (int b = 0; b < NATIVE_PAD_BUTTON_COUNT; b++)
+		{
+			for (int k = 0; k < NATIVE_KEY_BINDINGS; k++)
+			{
+				if (input.keyboard[b][k] == scancode)
+				{
+					input.keyboard[b][k] = SDL_SCANCODE_UNKNOWN;
+				}
+			}
+		}
+	}
+	input.keyboard[button][slot] = scancode;
+	s_capture.active = false;
+	CommitInputSettings();
+}
+
+void AssignPad(int button, int binding)
+{
+	NativeInputSettings &input = g_settings.input;
+	if (binding != NATIVE_PAD_BIND_NONE)
+	{
+		for (int b = 0; b < NATIVE_PAD_BUTTON_COUNT; b++)
+		{
+			if (input.gamepad[b] == binding)
+			{
+				input.gamepad[b] = NATIVE_PAD_BIND_NONE;
+			}
+		}
+	}
+	input.gamepad[button] = binding;
+	s_capture.active = false;
+	CommitInputSettings();
+}
+
+// Returns true when the event was consumed by an active binding capture.
+bool HandleCaptureEvent(const SDL_Event *event)
+{
+	if (!s_capture.active)
+	{
+		return false;
+	}
+
+	const Uint64 elapsed = SDL_GetTicks() - s_capture.startedMs;
+	if (elapsed > kCaptureTimeoutMs)
+	{
+		s_capture.active = false;
+		return false;
+	}
+
+	const bool keyColumn = s_capture.column != BIND_GAMEPAD;
+	switch (event->type)
+	{
+	case SDL_EVENT_KEY_DOWN:
+		if (event->key.repeat)
+		{
+			return true;
+		}
+		if (event->key.scancode == SDL_SCANCODE_ESCAPE)
+		{
+			s_capture.active = false;
+		}
+		else if ((event->key.scancode == SDL_SCANCODE_BACKSPACE) || (event->key.scancode == SDL_SCANCODE_DELETE))
+		{
+			if (keyColumn)
+			{
+				AssignKey(s_capture.button, s_capture.column, SDL_SCANCODE_UNKNOWN);
+			}
+			else
+			{
+				AssignPad(s_capture.button, NATIVE_PAD_BIND_NONE);
+			}
+		}
+		else if (keyColumn && (event->key.scancode != SDL_SCANCODE_F1))
+		{
+			AssignKey(s_capture.button, s_capture.column, event->key.scancode);
+		}
+		return true;
+
+	case SDL_EVENT_KEY_UP:
+		return true;
+
+	case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+		// Ignore the press that started the capture (gamepad navigation's "accept").
+		if (!keyColumn && (elapsed > kCaptureIgnoreMs) && (event->gbutton.button != SDL_GAMEPAD_BUTTON_GUIDE))
+		{
+			AssignPad(s_capture.button, event->gbutton.button);
+		}
+		return true;
+
+	case SDL_EVENT_GAMEPAD_BUTTON_UP:
+		return true;
+
+	case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+		if (!keyColumn && (elapsed > kCaptureIgnoreMs) &&
+		    ((event->gaxis.value > kCaptureAxisThreshold) || (event->gaxis.value < -kCaptureAxisThreshold)))
+		{
+			const int sign = (event->gaxis.value < 0) ? NATIVE_PAD_BIND_NEGATIVE : 0;
+			AssignPad(s_capture.button, NATIVE_PAD_BIND_AXIS | event->gaxis.axis | sign);
+		}
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+bool IsPlayStationPad(int type)
+{
+	return (type == SDL_GAMEPAD_TYPE_PS3) || (type == SDL_GAMEPAD_TYPE_PS4) || (type == SDL_GAMEPAD_TYPE_PS5);
+}
+
+// The controller type labels are drawn for: player 1's controller, else any connected one.
+int LabelGamepadType()
+{
+	int type = SDL_GAMEPAD_TYPE_STANDARD;
+	for (int player = 0; player < NATIVE_INPUT_PLAYERS; player++)
+	{
+		if (NativeInput_GetPlayerController(player, nullptr, 0, &type))
+		{
+			return type;
+		}
+	}
+	return SDL_GAMEPAD_TYPE_STANDARD;
+}
+
+const char *FaceButtonLabel(SDL_GamepadButton button, int type)
+{
+	switch (SDL_GetGamepadButtonLabelForType((SDL_GamepadType)type, button))
+	{
+	case SDL_GAMEPAD_BUTTON_LABEL_A: return "A";
+	case SDL_GAMEPAD_BUTTON_LABEL_B: return "B";
+	case SDL_GAMEPAD_BUTTON_LABEL_X: return "X";
+	case SDL_GAMEPAD_BUTTON_LABEL_Y: return "Y";
+	case SDL_GAMEPAD_BUTTON_LABEL_CROSS: return "Cross";
+	case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE: return "Circle";
+	case SDL_GAMEPAD_BUTTON_LABEL_SQUARE: return "Square";
+	case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return "Triangle";
+	default: return nullptr;
+	}
+}
+
+void FormatPadBinding(int binding, int type, char *out, size_t outSize)
+{
+	const bool ps = IsPlayStationPad(type);
+	if (binding == NATIVE_PAD_BIND_NONE)
+	{
+		snprintf(out, outSize, "Unbound");
+		return;
+	}
+
+	if ((binding & NATIVE_PAD_BIND_AXIS) != 0)
+	{
+		const bool negative = (binding & NATIVE_PAD_BIND_NEGATIVE) != 0;
+		switch (binding & ~(NATIVE_PAD_BIND_AXIS | NATIVE_PAD_BIND_NEGATIVE))
+		{
+		case SDL_GAMEPAD_AXIS_LEFTX: snprintf(out, outSize, "Left stick %s", negative ? "left" : "right"); return;
+		case SDL_GAMEPAD_AXIS_LEFTY: snprintf(out, outSize, "Left stick %s", negative ? "up" : "down"); return;
+		case SDL_GAMEPAD_AXIS_RIGHTX: snprintf(out, outSize, "Right stick %s", negative ? "left" : "right"); return;
+		case SDL_GAMEPAD_AXIS_RIGHTY: snprintf(out, outSize, "Right stick %s", negative ? "up" : "down"); return;
+		case SDL_GAMEPAD_AXIS_LEFT_TRIGGER: snprintf(out, outSize, "%s", ps ? "L2" : "LT"); return;
+		case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER: snprintf(out, outSize, "%s", ps ? "R2" : "RT"); return;
+		default: snprintf(out, outSize, "Axis %d", binding & 0xff); return;
+		}
+	}
+
+	const SDL_GamepadButton button = (SDL_GamepadButton)binding;
+	if (const char *face = FaceButtonLabel(button, type))
+	{
+		snprintf(out, outSize, "%s", face);
+		return;
+	}
+
+	const char *label = nullptr;
+	switch (button)
+	{
+	case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: label = ps ? "L1" : "LB"; break;
+	case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: label = ps ? "R1" : "RB"; break;
+	case SDL_GAMEPAD_BUTTON_LEFT_STICK: label = ps ? "L3" : "Left stick press"; break;
+	case SDL_GAMEPAD_BUTTON_RIGHT_STICK: label = ps ? "R3" : "Right stick press"; break;
+	case SDL_GAMEPAD_BUTTON_BACK: label = ps ? "Share / Create" : "Back / View"; break;
+	case SDL_GAMEPAD_BUTTON_START: label = ps ? "Options" : "Start / Menu"; break;
+	case SDL_GAMEPAD_BUTTON_GUIDE: label = "Home"; break;
+	case SDL_GAMEPAD_BUTTON_DPAD_UP: label = "D-pad up"; break;
+	case SDL_GAMEPAD_BUTTON_DPAD_DOWN: label = "D-pad down"; break;
+	case SDL_GAMEPAD_BUTTON_DPAD_LEFT: label = "D-pad left"; break;
+	case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: label = "D-pad right"; break;
+	default: break;
+	}
+	if (label != nullptr)
+	{
+		snprintf(out, outSize, "%s", label);
+		return;
+	}
+
+	const char *name = SDL_GetGamepadStringForButton(button);
+	snprintf(out, outSize, "%s", name ? name : "?");
+}
+
+void FormatKey(int scancode, char *out, size_t outSize)
+{
+	const char *name = (scancode != SDL_SCANCODE_UNKNOWN) ? SDL_GetScancodeName((SDL_Scancode)scancode) : "";
+	snprintf(out, outSize, "%s", (name[0] != '\0') ? name : "Unbound");
+}
+
+// One rebindable cell: shows the binding, or a prompt while capturing it.
+void BindingCell(int button, int column, const char *text, float width)
+{
+	const bool capturing = s_capture.active && (s_capture.button == button) && (s_capture.column == column);
+	char label[96];
+	snprintf(label, sizeof(label), "%s##bind%d_%d", capturing ? (column == BIND_GAMEPAD ? "Press a button..." : "Press a key...") : text, button, column);
+
+	if (capturing)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, Color(kYellow));
+		ImGui::PushStyleColor(ImGuiCol_Text, Color(kNavy));
+	}
+	else
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, Color(kFrame));
+		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_Text));
+	}
+	if (ImGui::Button(label, ImVec2(width, 0.0f)))
+	{
+		StartCapture(button, column);
+	}
+	ImGui::PopStyleColor(2);
+}
+
+void DrawPlayersSection()
+{
+	NativeInputSettings &input = g_settings.input;
+	const float comboWidth = ImGui::GetFontSize() * 12.0f;
+
+	SectionHeading("Players");
+
+	ImGui::SetNextItemWidth(comboWidth);
+	if (ImGui::Combo("Keyboard controls", &input.keyboardPlayer, kPlayerNames, NATIVE_INPUT_PLAYERS))
+	{
+		CommitInputSettings();
+	}
+	HelpTooltip("The keyboard drives this player, alongside any controller assigned to the same player.");
+
+	bool anyController = false;
+	for (int player = 0; player < NATIVE_INPUT_PLAYERS; player++)
+	{
+		char name[96];
+		if (!NativeInput_GetPlayerController(player, name, sizeof(name), nullptr))
+		{
+			continue;
+		}
+		anyController = true;
+
+		int target = player;
+		char comboId[32];
+		snprintf(comboId, sizeof(comboId), "##controllerplayer%d", player);
+		ImGui::SetNextItemWidth(comboWidth);
+		if (ImGui::Combo(comboId, &target, kPlayerNames, NATIVE_INPUT_PLAYERS) && (target != player))
+		{
+			NativeInput_SwapPlayers(player, target);
+		}
+		ImGui::SameLine();
+		ImGui::TextUnformatted(name);
+	}
+	if (!anyController)
+	{
+		ImGui::TextDisabled("No controllers connected.");
+	}
+	ImGui::TextDisabled("Home / PS button or L3 + R3 opens this menu from a controller.");
+}
+
+void DrawBindingsSection()
+{
+	NativeInputSettings &input = g_settings.input;
+	const int padType = LabelGamepadType();
+
+	SectionHeading("Bindings");
+	ImGui::TextDisabled("Click a binding, then press the new key or button. Esc cancels, Backspace clears.");
+
+	const float cellWidth = ImGui::GetFontSize() * 6.5f;
+	const float tableHeight = ImGui::GetFrameHeightWithSpacing() * 9.5f;
+	const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerH;
+	if (ImGui::BeginTable("##bindings", 4, flags, ImVec2(0.0f, tableHeight)))
+	{
+		ImGui::TableSetupScrollFreeze(0, 1);
+		ImGui::TableSetupColumn("PS1 button", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 5.5f);
+		ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, cellWidth);
+		ImGui::TableSetupColumn("Alt key", ImGuiTableColumnFlags_WidthFixed, cellWidth);
+		ImGui::TableSetupColumn("Controller", ImGuiTableColumnFlags_WidthFixed, cellWidth * 1.2f);
+		ImGui::TableHeadersRow();
+
+		char text[64];
+		for (int button = 0; button < NATIVE_PAD_BUTTON_COUNT; button++)
+		{
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextUnformatted(kPadButtonLabels[button]);
+
+			for (int key = 0; key < NATIVE_KEY_BINDINGS; key++)
+			{
+				ImGui::TableSetColumnIndex(1 + key);
+				FormatKey(input.keyboard[button][key], text, sizeof(text));
+				BindingCell(button, key, text, cellWidth);
+			}
+
+			ImGui::TableSetColumnIndex(3);
+			FormatPadBinding(input.gamepad[button], padType, text, sizeof(text));
+			BindingCell(button, BIND_GAMEPAD, text, cellWidth * 1.2f);
+		}
+		ImGui::EndTable();
+	}
+}
+
+void DrawAnalogSection()
+{
+	NativeInputSettings &input = g_settings.input;
+	const float sliderWidth = ImGui::GetFontSize() * 12.0f;
+	bool changed = false;
+
+	SectionHeading("Analog & rumble");
+
+	ImGui::SetNextItemWidth(sliderWidth);
+	changed |= ImGui::SliderInt("Stick deadzone", &input.stickDeadzone, 0, 50, "%d%%");
+	HelpTooltip("Ignores small stick movements, for worn sticks that drift. 0% passes the stick through unchanged.");
+
+	ImGui::SetNextItemWidth(sliderWidth);
+	changed |= ImGui::SliderInt("Analog press point", &input.analogPressPoint, 10, 90, "%d%%");
+	HelpTooltip("How far a trigger or stick bound to a button must move before it counts as pressed.");
+
+	changed |= CheckboxInt("Rumble", &input.rumble);
+	ImGui::BeginDisabled(!input.rumble);
+	ImGui::SetNextItemWidth(sliderWidth);
+	changed |= ImGui::SliderInt("Rumble strength", &input.rumbleStrength, 0, 100, "%d%%");
+	ImGui::EndDisabled();
+
+	ImGui::Spacing();
+	if (ImGui::Button("Reset input settings"))
+	{
+		NativeSettings_SetInputDefaults(&input);
+		changed = true;
+	}
+	HelpTooltip("Restores the default keyboard and controller layout and analog settings.");
+
+	if (changed)
+	{
+		CommitInputSettings();
+	}
+}
+
+void DrawInputTab()
+{
+	DrawPlayersSection();
+	DrawBindingsSection();
+	DrawAnalogSection();
+}
+
 void DrawAboutTab()
 {
 	ImGui::Text("%s %s", NATIVE_PRODUCT_NAME, CTR_NATIVE_VERSION);
@@ -383,7 +799,8 @@ void DrawTitle()
 void DrawMainWindow()
 {
 	const ImGuiViewport *viewport = ImGui::GetMainViewport();
-	ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+	// Stay centred as tabs of different sizes resize the window.
+	ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSizeConstraints(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), viewport->WorkSize);
 
 	bool open = true;
@@ -398,6 +815,11 @@ void DrawMainWindow()
 			if (ImGui::BeginTabItem("Video"))
 			{
 				DrawVideoTab();
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Input"))
+			{
+				DrawInputTab();
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("About"))
@@ -506,10 +928,23 @@ extern "C" void NativeUI_Shutdown(void)
 
 extern "C" void NativeUI_ProcessEvent(const SDL_Event *event)
 {
-	if (s_initialized)
+	if (!s_initialized)
 	{
-		ImGui_ImplSDL3_ProcessEvent(event);
+		return;
 	}
+
+	// A pending rebind swallows the key or button it is waiting for, so the menu
+	// doesn't also navigate with it.
+	if (s_menuOpen && HandleCaptureEvent(event))
+	{
+		return;
+	}
+	ImGui_ImplSDL3_ProcessEvent(event);
+}
+
+extern "C" int NativeUI_IsCapturingBinding(void)
+{
+	return (s_menuOpen && s_capture.active) ? 1 : 0;
 }
 
 extern "C" void NativeUI_Render(void)

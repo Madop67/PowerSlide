@@ -18,6 +18,8 @@ void NativeUI_ProcessEvent(const SDL_Event *event);
 void NativeUI_Render(void);
 int NativeUI_IsMenuOpen(void);
 void NativeUI_ToggleMenu(void);
+// True while the input tab waits for a key or button to bind; menu hotkeys pause meanwhile.
+int NativeUI_IsCapturingBinding(void);
 
 // Platform callback: shows the cursor while the menu is open, hides it in fullscreen otherwise.
 void Platform_UpdateCursorVisibility(void);

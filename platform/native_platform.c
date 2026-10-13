@@ -482,6 +482,32 @@ void Platform_PinVRAMDisplayRect(int x, int y, int w, int h, int frameCount)
 	s_pinnedVramDisplayCustomRect = 1;
 }
 
+// Guide (Home/PS) or L3+R3 toggles the settings menu from a controller.
+internal void Platform_HandleGamepadMenuButton(const SDL_GamepadButtonEvent *buttonEvent)
+{
+	if (NativeUI_IsCapturingBinding())
+	{
+		return;
+	}
+
+	SDL_Gamepad *gamepad = SDL_GetGamepadFromID(buttonEvent->which);
+	int toggle = buttonEvent->button == SDL_GAMEPAD_BUTTON_GUIDE;
+	if ((gamepad != NULL) && (buttonEvent->button == SDL_GAMEPAD_BUTTON_LEFT_STICK))
+	{
+		toggle = SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_RIGHT_STICK);
+	}
+	else if ((gamepad != NULL) && (buttonEvent->button == SDL_GAMEPAD_BUTTON_RIGHT_STICK))
+	{
+		toggle = SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_LEFT_STICK);
+	}
+
+	if (toggle)
+	{
+		NativeUI_ToggleMenu();
+		Platform_Log("[CTR Native] Settings menu %s\n", NativeUI_IsMenuOpen() ? "opened" : "closed");
+	}
+}
+
 void Platform_PollHostEvents(void)
 {
 	SDL_Event event;
@@ -497,6 +523,9 @@ void Platform_PollHostEvents(void)
 			break;
 		case SDL_EVENT_GAMEPAD_REMOVED:
 			Platform_InputControllerRemoved(event.gdevice.which);
+			break;
+		case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+			Platform_HandleGamepadMenuButton(&event.gbutton);
 			break;
 		case SDL_EVENT_QUIT:
 			exit(0);
@@ -518,6 +547,12 @@ void Platform_PollHostEvents(void)
 			char down = (event.type == SDL_EVENT_KEY_UP) ? 0 : 1;
 
 			Platform_UpdateHostAltKeyState(key, down);
+
+			// The input tab is waiting for a key to bind: it owns the keyboard.
+			if (NativeUI_IsCapturingBinding())
+			{
+				break;
+			}
 
 			// F1 toggles the settings menu; Esc also closes it while open.
 			if ((key == SDL_SCANCODE_F1) || ((key == SDL_SCANCODE_ESCAPE) && NativeUI_IsMenuOpen()))

@@ -50,19 +50,16 @@ PowerSlide is a feature-rich native PC port of Crash Team Racing (PS1, NTSC-U), 
 | Video | Widescreen 16:9: view-projection X × 0.75, wider frustum and far clip (after ModSDK's `USE_16BY9`) | `game/PushBuffer.c` |
 | Video | Widescreen HUD: the GPU layer squeezes HUD OT slots and menu sub-viewports to 3/4 width at draw time. The race HUD moves to the screen edges via primitive-memory anchor ranges | `platform/native_gpu.c`, `game/MAIN/MainFrame.c`, `game/MAIN/MainFrame_RenderFrame.c` |
 | Branding | "PowerSlide" in the window title, `--version`, menu and README | `include/platform/native_product.h` |
+| Input | Input tab: rebind every PS1 button (2 keys and 1 controller input each; click, then press; Esc cancels, Backspace clears); keyboard player; per-player controller assignment; stick deadzone; analog press point; rumble on/off and strength. Saved under `[input]` by key and controller names. The Home/PS button or L3+R3 opens the menu. Bindings are table-driven; defaults equal the old hard-coded layout | `platform/native_input.c`, `platform/native_ui.cpp`, `include/platform/native_input_config.h` |
 
 The debug wireframe toggle moved from F1 to Shift+F1. F2–F12 keep their upstream debug uses.
 
 ## Next tasks (in order)
 
-1. **Input configuration menu (keyboard and controller).** Add an "Input" tab to the settings window:
-   - Per-player rebinding for every PS1 button, on keyboard and gamepad.
-   - Assign devices to player slots.
-   - Analog deadzone and sensitivity.
-   - Rumble on/off.
-   - Persist everything in `ctr-native.toml`.
-   - A controller combo to open the menu.
-   - Start from `platform/native_input.c`, which has the fixed keyboard map `NativeInput_DefaultMappings` and the `s_controllerMapping` / `s_keyboardMapping` tables.
+1. **Input configuration menu: done** (branch `feature/input-config`). Follow-ups:
+   - Per-player controller bindings (today one controller layout is shared by all players).
+   - Remember controller-to-player assignment by controller GUID.
+   - Optionally pause the game while the menu is open (main-menu idle timers keep running).
 2. **60 fps by interpolation.** The user chose this over porting ModSDK's `USE_60FPS`.
    - Game logic stays at 30 Hz (`vsyncTillFlip = 2`), so physics, ghosts and records stay retail.
    - Render extra frames by blending camera and instance transforms between the last two logic ticks, as Ship of Harkinian does.
