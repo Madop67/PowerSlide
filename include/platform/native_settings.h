@@ -87,11 +87,17 @@ enum NativePadButton
 #define NATIVE_PAD_BIND_AXIS     0x4000
 #define NATIVE_PAD_BIND_NEGATIVE 0x8000
 #define NATIVE_INPUT_PLAYERS     4
+// "vvvv:pppp" USB vendor:product id of a remembered controller.
+#define NATIVE_CONTROLLER_ID_MAX   16
+#define NATIVE_CONTROLLER_NAME_MAX 64
 
-struct NativeInputSettings
+// One player's controls. Each player has its own keys (one keyboard can drive several
+// players) and controller layout; the player's controller and keys share the pad.
+struct NativePlayerInputSettings
 {
-	// Player slot (0-3) the keyboard drives; it shares the slot with any controller there.
-	int keyboardPlayer;
+	// Controller remembered for this player; it rejoins this player when it reconnects. "" = none.
+	char controllerId[NATIVE_CONTROLLER_ID_MAX];
+	char controllerName[NATIVE_CONTROLLER_NAME_MAX];
 	// SDL scancodes; 0 means unbound.
 	int keyboard[NATIVE_PAD_BUTTON_COUNT][NATIVE_KEY_BINDINGS];
 	int gamepad[NATIVE_PAD_BUTTON_COUNT];
@@ -104,6 +110,11 @@ struct NativeInputSettings
 	int rumbleStrength;
 };
 
+struct NativeInputSettings
+{
+	struct NativePlayerInputSettings players[NATIVE_INPUT_PLAYERS];
+};
+
 struct NativeSettings
 {
 	struct NativeVideoSettings video;
@@ -114,6 +125,8 @@ extern struct NativeSettings g_settings;
 
 void NativeSettings_SetDefaults(struct NativeSettings *settings);
 void NativeSettings_SetInputDefaults(struct NativeInputSettings *input);
+// Player 1 gets the classic keyboard layout; other players start with no keys.
+void NativeSettings_SetPlayerInputDefaults(struct NativePlayerInputSettings *player, int playerIndex);
 // Stable lower-case name of a pad button ("cross", "l2", "dpad_up"); used as a settings key.
 const char *NativeSettings_PadButtonKey(int button);
 // Loads <baseDir>/ctr-native.toml over the defaults. Returns 1 if a file was read.
@@ -124,7 +137,7 @@ const char *NativeSettings_GetPath(void);
 
 // Applies g_settings.video to the window and renderer (implemented by the platform layer).
 void Platform_ApplyVideoSettings(void);
-// Applies g_settings.input (keyboard player) to the input layer.
+// Applies g_settings.input to the input layer.
 void Platform_ApplyInputSettings(void);
 
 // Game code reads this (under CTR_NATIVE) to widen the 3D projection and culling.

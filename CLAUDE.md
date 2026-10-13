@@ -63,6 +63,7 @@ PowerSlide is a feature-rich native PC port of Crash Team Racing (PS1, NTSC-U), 
 | Video | Widescreen HUD: the GPU layer squeezes HUD OT slots and menu sub-viewports to 3/4 width at draw time. The race HUD moves to the screen edges via primitive-memory anchor ranges | `platform/native_gpu.c`, `game/MAIN/MainFrame.c`, `game/MAIN/MainFrame_RenderFrame.c` |
 | Branding | "PowerSlide" in the window title, `--version`, menu and README | `include/platform/native_product.h` |
 | Input | Input tab: rebind every PS1 button (2 keys and 1 controller input each; click, then press; Esc cancels, Backspace clears); keyboard player; per-player controller assignment; stick deadzone; analog press point; rumble on/off and strength. Saved under `[input]` by key and controller names. The Home/PS button or L3+R3 opens the menu. Bindings are table-driven; defaults equal the old hard-coded layout | `platform/native_input.c`, `platform/native_ui.cpp`, `include/platform/native_input_config.h` |
+| Input | Per-player input: each player has its own keys (one keyboard can drive several players), controller layout, deadzone, press point and rumble, saved under `[input.player1]`..`[input.player4]`. An old shared `[input]` section is converted on load. Controllers are remembered per player by USB vendor:product id and rejoin that player on reconnect. The menu no longer freezes everyone's input: it holds back only the device that opened it (keyboard, or that one controller, which alone navigates it) | `platform/native_input.c`, `platform/native_settings.c`, `platform/native_ui.cpp` |
 | Build | macOS Apple Silicon build via a wasm32 sandbox (wasi-sdk → wasm2c → native arm64), including the ImGui settings menu | `cmake/ctr_wasm_sandbox.cmake`, `platform/wasm/`, `platform/wasm_host/`, `tools/macos/` |
 
 The debug wireframe toggle moved from F1 to Shift+F1. F2–F12 keep their upstream debug uses.
@@ -78,10 +79,7 @@ Merging `feature/macos-port` with the settings, video and input work left macOS 
 
 ## Next tasks (in order)
 
-1. **Input configuration menu: done** (branch `feature/input-config`). Follow-ups:
-   - Per-player controller bindings (today one controller layout is shared by all players).
-   - Remember controller-to-player assignment by controller GUID.
-   - Optionally pause the game while the menu is open (main-menu idle timers keep running).
+1. **Input configuration menu: done** (branches `feature/input-config`, `feature/input-per-player`). The game deliberately keeps running while the menu is open. Two identical controllers share an id, so they fill remembered players in connection order.
 2. **60 fps by interpolation.** The user chose this over porting ModSDK's `USE_60FPS`.
    - Game logic stays at 30 Hz (`vsyncTillFlip = 2`), so physics, ghosts and records stay retail.
    - Render extra frames by blending camera and instance transforms between the last two logic ticks, as Ship of Harkinian does.

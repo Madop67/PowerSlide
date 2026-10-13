@@ -503,7 +503,7 @@ internal void Platform_HandleGamepadMenuButton(const SDL_GamepadButtonEvent *but
 
 	if (toggle)
 	{
-		NativeUI_ToggleMenu();
+		NativeUI_ToggleMenuFromController(buttonEvent->which);
 		Platform_Log("[CTR Native] Settings menu %s\n", NativeUI_IsMenuOpen() ? "opened" : "closed");
 	}
 }
@@ -593,8 +593,8 @@ void Platform_PollHostEvents(void)
 				break;
 			}
 
-			// The open menu owns the keyboard; game and debug keys wait until it closes.
-			if (NativeUI_IsMenuOpen())
+			// A menu opened from the keyboard owns it; game and debug keys wait until it closes.
+			if (NativeUI_MenuOwnsKeyboard())
 			{
 				break;
 			}
