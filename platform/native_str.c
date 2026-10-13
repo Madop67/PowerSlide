@@ -7,6 +7,9 @@
 
 #include <stdio.h>
 #include <string.h>
+// In-between frames (frame interpolation) are drawn on rolled-back game memory;
+// the host calls they make are dropped. See native_interp.h.
+#include <platform/native_interp.h>
 
 #define NATIVE_STR_EXTRACTED_SECTOR_SIZE    0x800
 #define NATIVE_STR_CD_SECTOR_SIZE           0x920
@@ -693,6 +696,11 @@ internal s32 NativeSTR_ReadNextFrame(void)
 
 s32 NativeSTR_StartTrackPreviewFromBigfileSector(s32 bigfileSector, s32 frameCount)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	struct NativeDiscImageFile discFile;
 
 	if (bigfileSector < 0)
@@ -741,6 +749,11 @@ s32 NativeSTR_StartTrackPreviewFromBigfileSector(s32 bigfileSector, s32 frameCou
 
 s32 NativeSTR_StartScrapbook(void)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	struct NativeDiscImageFile discFile;
 
 	if ((s_str.active != 0) && (s_str.format == NATIVE_STR_FORMAT_CD_STREAM))
@@ -779,6 +792,11 @@ s32 NativeSTR_StartScrapbook(void)
 
 void NativeSTR_Stop(void)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return;
+	}
+
 	if (s_str.file != NULL)
 	{
 		fclose(s_str.file);
@@ -802,6 +820,11 @@ void NativeSTR_Stop(void)
 
 s32 NativeSTR_UploadNextFrame(s32 dstX, s32 dstY)
 {
+	if (NativeInterp_InRenderPass())
+	{
+		return 0;
+	}
+
 	RECT16 rect;
 
 	if ((s_str.active == 0) || (s_str.source == NATIVE_STR_SOURCE_NONE))

@@ -26,6 +26,11 @@ enum NativeAspectMode
 
 #define NATIVE_RENDER_SCALE_MAX 8
 
+// Frames per second shown. The game always runs its logic at 30; above that,
+// in-between frames are interpolated (see native_interp.h).
+#define NATIVE_FRAME_RATE_ORIGINAL 30
+#define NATIVE_FRAME_RATE_MAX      360
+
 // Widescreen race HUD placement.
 enum NativeHudPosition
 {
@@ -54,6 +59,7 @@ struct NativeVideoSettings
 	int integerScaling;
 	int scaleFilter;
 	int textureFiltering;
+	int frameRate;
 	int showFps;
 };
 

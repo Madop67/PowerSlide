@@ -53,6 +53,7 @@ constexpr WindowSizePreset kWindowSizes[] = {
 constexpr const char *kDisplayModeNames[NATIVE_DISPLAY_COUNT] = {"Windowed", "Fullscreen"};
 constexpr const char *kAspectModeNames[NATIVE_ASPECT_COUNT] = {"Original (4:3)", "Widescreen (16:9)", "Stretch to window"};
 constexpr const char *kScaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"Sharp (nearest)", "Smooth (bilinear)"};
+constexpr int kFrameRates[] = {NATIVE_FRAME_RATE_ORIGINAL, 60, 120, 144, 165, 240};
 constexpr const char *kHudPositionNames[NATIVE_HUD_POSITION_COUNT] = {"Screen edges", "Centre (4:3)"};
 
 // CTR palette, taken from the retail menus: orange and yellow on deep blue.
@@ -237,6 +238,60 @@ void SectionHeading(const char *text)
 	ImGui::PopStyleColor();
 }
 
+// Refresh rate of the display the window is on, rounded (59.94 -> 60); 0 if unknown.
+int DisplayRefreshRate()
+{
+	const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(s_window));
+	if ((mode == nullptr) || (mode->refresh_rate <= 0.0f))
+	{
+		return 0;
+	}
+	return (int)(mode->refresh_rate + 0.5f);
+}
+
+void FrameRateLabel(char *label, size_t size, int rate)
+{
+	snprintf(label, size, rate == NATIVE_FRAME_RATE_ORIGINAL ? "%d (original)" : "%d", rate);
+}
+
+bool FrameRateCombo(int *frameRate, float width)
+{
+	bool changed = false;
+	char preview[32];
+	FrameRateLabel(preview, sizeof(preview), *frameRate);
+
+	ImGui::SetNextItemWidth(width);
+	if (ImGui::BeginCombo("Frame rate", preview))
+	{
+		for (int rate : kFrameRates)
+		{
+			char label[32];
+			FrameRateLabel(label, sizeof(label), rate);
+			if (ImGui::Selectable(label, *frameRate == rate))
+			{
+				*frameRate = rate;
+				changed = true;
+			}
+		}
+
+		const int display = DisplayRefreshRate();
+		if ((display > NATIVE_FRAME_RATE_ORIGINAL) && (display <= NATIVE_FRAME_RATE_MAX))
+		{
+			char label[48];
+			snprintf(label, sizeof(label), "Match display (%d)", display);
+			if (ImGui::Selectable(label, false))
+			{
+				*frameRate = display;
+				changed = true;
+			}
+		}
+		ImGui::EndCombo();
+	}
+	HelpTooltip("Above 30, extra frames are drawn between the game's 30 updates per second by blending the camera, karts "
+	            "and objects. Gameplay, physics, ghosts and replays are unchanged. Menus and loading screens stay at 30.");
+	return changed;
+}
+
 void DrawVideoTab()
 {
 	NativeVideoSettings &video = g_settings.video;
@@ -273,6 +328,8 @@ void DrawVideoTab()
 	}
 	ImGui::EndDisabled();
 	ImGui::SetItemTooltip(video.displayMode == NATIVE_DISPLAY_WINDOWED ? "You can also drag the window edges to any size." : "Switch to windowed mode to pick a window size.");
+
+	changed |= FrameRateCombo(&video.frameRate, comboWidth);
 
 	SectionHeading("Picture");
 

@@ -4,6 +4,7 @@
 // (SDL_AudioSpec, most SDL_Event variants) have identical layouts on wasm32 and
 // arm64. Opaque SDL objects cross the boundary as handles (see host_mem.h).
 
+#include <stddef.h>
 #include <string.h>
 
 #include <SDL3/SDL.h>
@@ -477,6 +478,40 @@ f32 w2c_env_SDL_GetWindowDisplayScale(struct w2c_env *env, u32 window)
 {
 	(void)env;
 	return SDL_GetWindowDisplayScale(H2P(SDL_Window, window));
+}
+
+u32 w2c_env_SDL_GetDisplayForWindow(struct w2c_env *env, u32 window)
+{
+	(void)env;
+	return SDL_GetDisplayForWindow(H2P(SDL_Window, window));
+}
+
+// SDL_DisplayMode ends in a pointer, so the arm64 struct is longer than the guest's.
+// The plain fields before it line up and are copied into one reusable guest
+// buffer; SDL owns the returned mode, so the guest never frees it.
+_Static_assert(offsetof(SDL_DisplayMode, internal) == 32, "SDL_DisplayMode fields must match the wasm32 layout");
+#define HOST_SDL_GUEST_DISPLAY_MODE_SIZE 36u
+
+u32 w2c_env_SDL_GetCurrentDisplayMode(struct w2c_env *env, u32 displayID)
+{
+	(void)env;
+	static u32 s_guestDisplayMode;
+	const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode((SDL_DisplayID)displayID);
+
+	if (mode == NULL)
+	{
+		return 0;
+	}
+
+	if (s_guestDisplayMode == 0)
+	{
+		s_guestDisplayMode = HostMem_Alloc(HOST_SDL_GUEST_DISPLAY_MODE_SIZE);
+	}
+
+	u8 *dst = (u8 *)HOST_G2H_SIZED(s_guestDisplayMode, HOST_SDL_GUEST_DISPLAY_MODE_SIZE);
+	memcpy(dst, mode, offsetof(SDL_DisplayMode, internal));
+	memset(dst + offsetof(SDL_DisplayMode, internal), 0, HOST_SDL_GUEST_DISPLAY_MODE_SIZE - offsetof(SDL_DisplayMode, internal));
+	return s_guestDisplayMode;
 }
 
 u32 w2c_env_SDL_GetWindowID(struct w2c_env *env, u32 window)

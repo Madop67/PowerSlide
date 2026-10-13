@@ -467,6 +467,11 @@ void Platform_PinVRAMDisplayFrames(int frameCount)
 	}
 }
 
+int Platform_IsVRAMDisplayPinned(void)
+{
+	return s_pinnedVramDisplayFrames > 0;
+}
+
 void Platform_PinVRAMDisplayRect(int x, int y, int w, int h, int frameCount)
 {
 	if ((frameCount <= 0) || (w <= 0) || (h <= 0))
@@ -707,7 +712,7 @@ internal void Native_EnsureVBlankTarget(void)
 	}
 }
 
-internal void Native_WaitUntilVBlankTarget(void)
+internal void Native_WaitUntilCounter(u64 target)
 {
 	const u64 freq = SDL_GetPerformanceFrequency();
 	const u64 spinWindow = Native_CounterFromMicroseconds(freq, NATIVE_VSYNC_SPIN_US);
@@ -717,20 +722,20 @@ internal void Native_WaitUntilVBlankTarget(void)
 	{
 		const u64 now = SDL_GetPerformanceCounter();
 
-		if (now >= s_nextVBlankCounter)
+		if (now >= target)
 		{
 			NativePerf_EndScope(NATIVE_PERF_BUCKET_VSYNC_WAIT);
 			return;
 		}
 
-		u64 remaining = s_nextVBlankCounter - now;
+		u64 remaining = target - now;
 		if (remaining <= spinWindow)
 		{
 			// NOTE(penta3): OS sleeps can wake late. Sleep while safely far from
 			// the VBlank target (high-res waitable timer), then spin only this
 			// final small window so the native VBlank emitter is paced by our
 			// clock, not the OS scheduler.
-			while (SDL_GetPerformanceCounter() < s_nextVBlankCounter)
+			while (SDL_GetPerformanceCounter() < target)
 			{
 			}
 
@@ -749,6 +754,11 @@ internal void Native_WaitUntilVBlankTarget(void)
 			SDL_DelayPrecise(sleepUs * 1000ull);
 		}
 	}
+}
+
+internal void Native_WaitUntilVBlankTarget(void)
+{
+	Native_WaitUntilCounter(s_nextVBlankCounter);
 }
 
 internal void Native_EmitVBlank(void)
@@ -866,6 +876,32 @@ int VSync(int mode)
 int Platform_GetVBlankCount(void)
 {
 	return s_nativeVBlankCount;
+}
+
+u64 Platform_GetVBlankTime(int vblankIndex)
+{
+	Native_EnsureVBlankTarget();
+
+	// s_nextVBlankCounter is when VBlank number s_nativeVBlankCount + 1 is due.
+	const u64 step = (SDL_GetPerformanceFrequency() * NATIVE_VBLANK_GPU_CYCLES) / NATIVE_GPU_CLOCK_HZ;
+	const s64 ahead = (s64)vblankIndex - ((s64)s_nativeVBlankCount + 1);
+
+	return (u64)((s64)s_nextVBlankCounter + ahead * (s64)step);
+}
+
+void Platform_WaitUntilTime(u64 target)
+{
+	while (1)
+	{
+		Native_CatchUpDueVBlanks();
+
+		if (SDL_GetPerformanceCounter() >= target)
+		{
+			return;
+		}
+
+		Native_WaitUntilCounter((target < s_nextVBlankCounter) ? target : s_nextVBlankCounter);
+	}
 }
 
 void Platform_WaitUntilVBlank(int targetVBlank)

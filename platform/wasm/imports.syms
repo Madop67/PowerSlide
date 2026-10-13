@@ -24,7 +24,9 @@ SDL_GetAudioStreamQueued
 SDL_GetBasePath
 SDL_GetClipboardText
 SDL_GetCurrentAudioDriver
+SDL_GetCurrentDisplayMode
 SDL_GetCurrentVideoDriver
+SDL_GetDisplayForWindow
 SDL_GetError
 SDL_GetGamepadAxis
 SDL_GetGamepadAxisFromString

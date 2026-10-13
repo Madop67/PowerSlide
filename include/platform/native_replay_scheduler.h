@@ -34,6 +34,8 @@ int NativeReplayScheduler_ConsumeVSyncPacket(int requestedVBlanks, int *emittedV
 int NativeReplayScheduler_ConsumeFrameElapsedTimeMS(int *elapsedTimeMS);
 int NativeReplayScheduler_EndFrame(const struct NativeReplaySchedulerFrameInfo *info);
 void NativeReplayScheduler_RecordVSyncPacket(int emittedVBlanks);
+// True while recording or playing back, when every VBlank must come from VSync().
+int NativeReplayScheduler_IsActive(void);
 #endif
 
 #endif
