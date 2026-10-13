@@ -21,6 +21,8 @@ enum NativeAspectMode
 	NATIVE_ASPECT_COUNT
 };
 
+#define NATIVE_RENDER_SCALE_MAX 8
+
 enum NativeScaleFilter
 {
 	NATIVE_SCALE_FILTER_SHARP = 0,
@@ -35,6 +37,8 @@ struct NativeVideoSettings
 	int windowWidth;
 	int windowHeight;
 	int aspectMode;
+	// Internal resolution multiplier for the main render target (1 = original).
+	int renderScale;
 	int integerScaling;
 	int scaleFilter;
 	int textureFiltering;

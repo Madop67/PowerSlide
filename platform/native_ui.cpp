@@ -272,6 +272,27 @@ void DrawVideoTab()
 	SectionHeading("Picture");
 
 	ImGui::SetNextItemWidth(comboWidth);
+	char scalePreview[32];
+	snprintf(scalePreview, sizeof(scalePreview), video.renderScale <= 1 ? "1x (original)" : "%dx", video.renderScale);
+	if (ImGui::BeginCombo("Internal resolution", scalePreview))
+	{
+		for (int scale = 1; scale <= NATIVE_RENDER_SCALE_MAX; scale++)
+		{
+			char label[48];
+			// 512 x 216 is the in-race display; menus use other PS1 display sizes.
+			snprintf(label, sizeof(label), scale == 1 ? "1x (original, 512 x 216)" : "%dx (%d x %d)", scale, 512 * scale, 216 * scale);
+			if (ImGui::Selectable(label, video.renderScale == scale))
+			{
+				video.renderScale = scale;
+				changed = true;
+			}
+		}
+		ImGui::EndCombo();
+	}
+	HelpTooltip("Renders the game at a multiple of the original resolution for sharper edges. "
+	            "Above 1x the final image also skips the PS1's 15-bit colour reduction. Screen effects (blur, heat haze) stay at 1x.");
+
+	ImGui::SetNextItemWidth(comboWidth);
 	changed |= ImGui::Combo("Aspect ratio", &video.aspectMode, kAspectModeNames, NATIVE_ASPECT_COUNT);
 	HelpTooltip("Original keeps the 4:3 picture with black bars. Stretch fills the window and distorts the image.");
 

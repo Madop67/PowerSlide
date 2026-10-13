@@ -48,6 +48,7 @@ global_variable const struct NativeSettingDesc s_settingDescs[] = {
 	{"video", "window_width", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(windowWidth), 0, 16384, NULL},
 	{"video", "window_height", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(windowHeight), 0, 16384, NULL},
 	{"video", "aspect_ratio", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(aspectMode), 0, NATIVE_ASPECT_COUNT - 1, s_aspectModeNames},
+	{"video", "render_scale", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(renderScale), 1, NATIVE_RENDER_SCALE_MAX, NULL},
 	{"video", "integer_scaling", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(integerScaling), 0, 1, NULL},
 	{"video", "scale_filter", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(scaleFilter), 0, NATIVE_SCALE_FILTER_COUNT - 1, s_scaleFilterNames},
 	{"video", "texture_filtering", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(textureFiltering), 0, 1, NULL},
@@ -66,6 +67,7 @@ void NativeSettings_SetDefaults(struct NativeSettings *settings)
 	memset(settings, 0, sizeof(*settings));
 	settings->video.displayMode = NATIVE_DISPLAY_WINDOWED;
 	settings->video.aspectMode = NATIVE_ASPECT_ORIGINAL;
+	settings->video.renderScale = 1;
 	settings->video.scaleFilter = NATIVE_SCALE_FILTER_SHARP;
 }
 

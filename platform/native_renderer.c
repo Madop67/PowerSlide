@@ -102,8 +102,12 @@ struct NativeRenderTarget
 	TextureID texture;
 	GLuint framebuffer;
 	GLuint stencilBuffer;
+	// Pixel size of the GL texture.
 	s32 width;
 	s32 height;
+	// Size of the VRAM region it stands for; width = sourceWidth * render scale.
+	s32 sourceWidth;
+	s32 sourceHeight;
 };
 
 global_variable struct NativeRenderTarget s_mainRenderTarget;
@@ -111,6 +115,12 @@ global_variable struct NativeRenderTarget s_offscreenRenderTarget;
 // RGBA copy of the displayed VRAM region, used only for smooth (linear) presentation scaling.
 global_variable struct NativeRenderTarget s_presentRenderTarget;
 global_variable b32 s_presentRenderTargetReady;
+
+// Internal resolution: the main render target is the display size times this
+// factor, latched once per frame in BeginScene. Offscreen (render-to-VRAM)
+// targets and VRAM itself always stay at the original resolution.
+global_variable s32 s_renderScale = 1;
+global_variable s32 s_maxRenderTargetSize = 4096;
 
 global_variable TextureID s_whiteTexture = (TextureID)-1;
 global_variable TextureID s_lastBoundTexture = (TextureID)-1;
@@ -160,6 +170,7 @@ internal void NativeRenderer_InitRenderTarget(struct NativeRenderTarget *target)
 internal void NativeRenderer_DestroyRenderTarget(struct NativeRenderTarget *target);
 internal void NativeRenderer_EnsureRenderTarget(struct NativeRenderTarget *target, int width, int height);
 internal void NativeRenderer_BindMainRenderTarget(void);
+internal s32 NativeRenderer_ChooseRenderScale(void);
 internal void NativeRenderer_DrawVRAMRegion(int x, int y, int width, int height);
 internal void NativeRenderer_LoadRenderTargetFromVRAM(struct NativeRenderTarget *target, int x, int y);
 #if defined(CTR_INTERNAL)
@@ -238,6 +249,16 @@ internal int NativeRenderer_InitialiseGLExt(void)
 
 	const char *glslVersionStr = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
 	NATIVE_RENDERER_LOG("*GLSL version: %s\n", glslVersionStr);
+
+	GLint maxTextureSize = 0;
+	GLint maxRenderbufferSize = 0;
+	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
+	glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxRenderbufferSize);
+	s_maxRenderTargetSize = SDL_min(maxTextureSize, maxRenderbufferSize);
+	if (s_maxRenderTargetSize <= 0)
+	{
+		s_maxRenderTargetSize = 2048;
+	}
 
 	return 1;
 }
@@ -348,6 +369,7 @@ void NativeRenderer_BeginScene(void)
 
 	NativePerf_BeginScope(NATIVE_PERF_BUCKET_RENDERER_BEGIN_SCENE);
 	s_lastBoundTexture = 0;
+	s_renderScale = NativeRenderer_ChooseRenderScale();
 
 	NativeRenderer_UpdatePresentationViewport();
 	NativeRenderer_ClearPresentationBars();
@@ -538,16 +560,21 @@ internal void NativeRenderer_DestroyRenderTarget(struct NativeRenderTarget *targ
 	target->texture = (TextureID)-1;
 }
 
-internal void NativeRenderer_EnsureRenderTarget(struct NativeRenderTarget *target, int width, int height)
+internal void NativeRenderer_EnsureRenderTargetScaled(struct NativeRenderTarget *target, int sourceWidth, int sourceHeight, int scale)
 {
-	if (width < 1)
+	if (sourceWidth < 1)
 	{
-		width = 1;
+		sourceWidth = 1;
 	}
-	if (height < 1)
+	if (sourceHeight < 1)
 	{
-		height = 1;
+		sourceHeight = 1;
 	}
+
+	const int width = sourceWidth * scale;
+	const int height = sourceHeight * scale;
+	target->sourceWidth = sourceWidth;
+	target->sourceHeight = sourceHeight;
 
 	if ((target->width == width) && (target->height == height))
 	{
@@ -567,6 +594,30 @@ internal void NativeRenderer_EnsureRenderTarget(struct NativeRenderTarget *targe
 	s_lastBoundTexture = (TextureID)-1;
 }
 
+internal void NativeRenderer_EnsureRenderTarget(struct NativeRenderTarget *target, int width, int height)
+{
+	NativeRenderer_EnsureRenderTargetScaled(target, width, height, 1);
+}
+
+internal s32 NativeRenderer_ChooseRenderScale(void)
+{
+	s32 scale = g_settings.video.renderScale;
+	if (scale < 1)
+	{
+		scale = 1;
+	}
+	if (scale > NATIVE_RENDER_SCALE_MAX)
+	{
+		scale = NATIVE_RENDER_SCALE_MAX;
+	}
+	// The widest PS1 display mode is 640 pixels; stay inside the driver's limits.
+	while ((scale > 1) && (640 * scale > s_maxRenderTargetSize))
+	{
+		scale--;
+	}
+	return scale;
+}
+
 internal void NativeRenderer_BindMainRenderTarget(void)
 {
 	int width = activeDispEnv.disp.w;
@@ -577,7 +628,7 @@ internal void NativeRenderer_BindMainRenderTarget(void)
 		height = activeDrawEnv.clip.h;
 	}
 
-	NativeRenderer_EnsureRenderTarget(&s_mainRenderTarget, width, height);
+	NativeRenderer_EnsureRenderTargetScaled(&s_mainRenderTarget, width, height, s_renderScale);
 	glBindFramebuffer(GL_FRAMEBUFFER, s_mainRenderTarget.framebuffer);
 }
 
@@ -604,7 +655,7 @@ internal void NativeRenderer_LoadRenderTargetFromVRAM(struct NativeRenderTarget 
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_STENCIL_TEST);
 	glViewport(0, 0, target->width, target->height);
-	NativeRenderer_DrawVRAMRegion(x, y, target->width, target->height);
+	NativeRenderer_DrawVRAMRegion(x, y, target->sourceWidth, target->sourceHeight);
 	glClear(GL_STENCIL_BUFFER_BIT);
 	glEnable(GL_STENCIL_TEST);
 
@@ -1344,12 +1395,12 @@ void NativeRenderer_SetupClipMode(const RECT16 *rect, const DISPENV *displayEnv,
 		clipRectX += 0.5f;
 	}
 
-	// Normal game draws target the PSX-sized main framebuffer. Host-window
-	// coordinates are introduced only by the final presentation pass.
+	// Normal game draws target the main framebuffer: the display size times the
+	// internal resolution scale. Host-window coordinates enter only at presentation.
 	const float viewportX = 0.0f;
 	const float viewportY = 0.0f;
-	const float viewportW = (float)displayEnv->disp.w;
-	const float viewportH = (float)displayEnv->disp.h;
+	const float viewportW = (float)(displayEnv->disp.w * s_renderScale);
+	const float viewportH = (float)(displayEnv->disp.h * s_renderScale);
 	const float flipOffset = viewportY + viewportH - clipRectH * viewportH;
 	const float crx = viewportX + clipRectX * viewportW;
 	const float cry = clipRectY * viewportH;
@@ -2164,6 +2215,38 @@ void NativeRenderer_PresentVRAMRect(int displayX, int displayY, int displayW, in
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		NativeRenderer_DrawVRAMRegion(displayX, displayY, displayW, displayH);
 	}
+	glBindVertexArray(0);
+
+	s_previousShader = (ShaderID)-1;
+	s_lastBoundTexture = (TextureID)-1;
+}
+
+// Presents the frame just rendered. At the original resolution this goes through
+// VRAM exactly like retail (15-bit colour, PS1 pixels); at higher internal
+// resolutions it blits the high-res main render target straight to the window.
+void NativeRenderer_PresentFrame(int displayX, int displayY, int displayW, int displayH)
+{
+	if ((s_renderScale <= 1) || (s_mainRenderTarget.sourceWidth != displayW) || (s_mainRenderTarget.sourceHeight != displayH))
+	{
+		NativeRenderer_PresentVRAMRect(displayX, displayY, displayW, displayH);
+		return;
+	}
+
+	NativeRenderer_SetScissorState(0);
+	NativeRenderer_EnableDepth(0);
+	NativeRenderer_SetBlendMode(BM_NONE);
+
+	// Downsampling (window smaller than the render target) always filters, so
+	// higher internal resolutions act as supersampling instead of aliasing.
+	const int downsampling = (s_presentViewport.w < s_mainRenderTarget.width) || (s_presentViewport.h < s_mainRenderTarget.height);
+	const GLenum filter = (downsampling || (g_settings.video.scaleFilter == NATIVE_SCALE_FILTER_SMOOTH)) ? GL_LINEAR : GL_NEAREST;
+
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, s_mainRenderTarget.framebuffer);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+	glBlitFramebuffer(0, 0, s_mainRenderTarget.width, s_mainRenderTarget.height, s_presentViewport.x, s_presentViewport.y,
+	                  s_presentViewport.x + s_presentViewport.w, s_presentViewport.y + s_presentViewport.h, GL_COLOR_BUFFER_BIT, filter);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	NativeRenderer_SetViewPort(s_presentViewport.x, s_presentViewport.y, s_presentViewport.w, s_presentViewport.h);
 	glBindVertexArray(0);
 
 	s_previousShader = (ShaderID)-1;
