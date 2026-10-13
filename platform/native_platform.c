@@ -238,18 +238,64 @@ internal void Platform_UpdateHostAltKeyState(const s32 key, const s8 down)
 }
 
 #if defined(CTR_INTERNAL)
-internal void Platform_TakeScreenshot(void)
+internal void Platform_SaveScreenshot(const char *path)
 {
 	u8 *pixels = (u8 *)malloc(g_windowWidth * g_windowHeight * 4);
 
 	glReadPixels(0, 0, g_windowWidth, g_windowHeight, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
 
-	SDL_Surface *surface = SDL_CreateSurfaceFrom(g_windowWidth, g_windowHeight, SDL_PIXELFORMAT_BGRA8888, pixels, g_windowWidth * 4);
+	// GL rows run bottom-up.
+	const int pitch = g_windowWidth * 4;
+	u8 *row = (u8 *)malloc(pitch);
+	for (int y = 0; y < g_windowHeight / 2; y++)
+	{
+		u8 *top = pixels + (y * pitch);
+		u8 *bottom = pixels + ((g_windowHeight - 1 - y) * pitch);
+		memcpy(row, top, pitch);
+		memcpy(top, bottom, pitch);
+		memcpy(bottom, row, pitch);
+	}
+	free(row);
 
-	SDL_SaveBMP(surface, "SCREENSHOT.BMP");
+	SDL_Surface *surface = SDL_CreateSurfaceFrom(g_windowWidth, g_windowHeight, SDL_PIXELFORMAT_XRGB8888, pixels, pitch);
+
+	SDL_SaveBMP(surface, path);
 	SDL_DestroySurface(surface);
 
 	free(pixels);
+}
+
+internal void Platform_TakeScreenshot(void)
+{
+	Platform_SaveScreenshot("SCREENSHOT.BMP");
+}
+
+// --screenshot-every N: saves debug/shots/frame-NNNNNN.bmp every N replay frames, to
+// see what a recorded or scripted replay did.
+global_variable u32 s_screenshotEvery;
+global_variable u32 s_lastScreenshotFrame = 0xffffffffu;
+
+void Platform_SetScreenshotInterval(unsigned int frames)
+{
+	s_screenshotEvery = frames;
+	if (frames != 0)
+	{
+		NativeReplayScheduler_EnsureDir("debug/shots");
+	}
+}
+
+internal void Platform_MaybeTakeIntervalScreenshot(void)
+{
+	const u32 frame = NativeReplayScheduler_GetFrame();
+	char path[64];
+
+	if ((s_screenshotEvery == 0) || (frame == s_lastScreenshotFrame) || ((frame % s_screenshotEvery) != 0))
+	{
+		return;
+	}
+	s_lastScreenshotFrame = frame;
+	snprintf(path, sizeof(path), "debug/shots/frame-%06u.bmp", frame);
+	Platform_SaveScreenshot(path);
 }
 #endif
 
@@ -480,6 +526,9 @@ void Platform_EndScene(void)
 	}
 	NativeRenderer_PresentFrame(activeDispEnv.disp.x, activeDispEnv.disp.y, activeDispEnv.disp.w, activeDispEnv.disp.h);
 	NativeUI_Render();
+#if defined(CTR_INTERNAL)
+	Platform_MaybeTakeIntervalScreenshot();
+#endif
 	NativeRenderer_EndGpuFrame();
 	NativeRenderer_SwapWindow();
 	NativePerf_EndScope(NATIVE_PERF_BUCKET_PLATFORM_END_SCENE);
@@ -878,6 +927,20 @@ internal void Native_WaitAndEmitVBlank(void)
 	Native_AdvanceVBlankTarget();
 }
 
+#if defined(CTR_INTERNAL)
+// --replay-turbo plays the recorded VBlanks back to back instead of in real time.
+internal void Native_ReplayEmitVBlank(void)
+{
+	if (NativeReplayScheduler_IsTurbo())
+	{
+		Native_EmitVBlank();
+		s_nextVBlankCounter = 0;
+		return;
+	}
+	Native_WaitAndEmitVBlank();
+}
+#endif
+
 int VSync(int mode)
 {
 	int emittedVBlanks;
@@ -895,7 +958,7 @@ int VSync(int mode)
 	{
 		for (s32 i = 0; i < emittedVBlanks; i++)
 		{
-			Native_WaitAndEmitVBlank();
+			Native_ReplayEmitVBlank();
 		}
 
 		return s_nativeVBlankCount;
@@ -963,7 +1026,7 @@ void Platform_WaitUntilVBlank(int targetVBlank)
 	{
 		for (s32 i = 0; i < emittedVBlanks; i++)
 		{
-			Native_WaitAndEmitVBlank();
+			Native_ReplayEmitVBlank();
 		}
 
 		return;

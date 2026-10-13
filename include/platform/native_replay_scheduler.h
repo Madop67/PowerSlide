@@ -22,6 +22,9 @@ struct NativeReplaySchedulerFrameInfo
 	u32 deadcoed1;
 	u32 advRng0;
 	u32 advRng1;
+	// Hash of every driver's position, speed, angle, lap and items, so a physics
+	// change shows up even when the RNG streams agree.
+	u32 driverHash;
 };
 
 int NativeReplayScheduler_PrepareReportFromArgs(int argc, char **argv);
@@ -36,6 +39,17 @@ int NativeReplayScheduler_EndFrame(const struct NativeReplaySchedulerFrameInfo *
 void NativeReplayScheduler_RecordVSyncPacket(int emittedVBlanks);
 // True while recording or playing back, when every VBlank must come from VSync().
 int NativeReplayScheduler_IsActive(void);
+// True when playback should emit VBlanks without waiting for wall-clock time (--replay-turbo).
+int NativeReplayScheduler_IsTurbo(void);
+// Creates a folder and its parents.
+int NativeReplayScheduler_EnsureDir(const char *path);
+// Frames recorded or played so far.
+unsigned int NativeReplayScheduler_GetFrame(void);
+// Process exit code for the run: 0, NATIVE_REPLAY_EXIT_ERROR or NATIVE_REPLAY_EXIT_DIVERGED.
+int NativeReplayScheduler_GetExitCode(void);
+
+#define NATIVE_REPLAY_EXIT_ERROR    2
+#define NATIVE_REPLAY_EXIT_DIVERGED 3
 #endif
 
 #endif

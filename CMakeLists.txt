@@ -210,6 +210,17 @@ if(BUILD_TESTING)
             -p test_*.py
     )
 
+    # Plays every power-on replay in debug/replay-suite with default settings and fails
+    # on any divergence. Skipped when there is no suite (it needs your own disc).
+    if(NOT CTR_NATIVE_SANDBOX)
+        add_test(
+            NAME ctr_replay_suite
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/replays/replay_suite.py
+                run --exe $<TARGET_FILE:ctr_native> --skip-code 77
+        )
+        set_tests_properties(ctr_replay_suite PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
+
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         add_executable(ctr_particle_renderer_smoke
             tests/particle_renderer_smoke.c

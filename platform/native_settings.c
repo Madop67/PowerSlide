@@ -527,6 +527,14 @@ int NativeSettings_Load(const char *baseDir)
 	return 1;
 }
 
+void NativeSettings_LoadVanilla(void)
+{
+	NativeSettings_RegisterDescs();
+	NativeSettings_SetDefaults(&g_settings);
+	s_settingsPath[0] = '\0';
+	Platform_Log("[CTR Native] Settings: --vanilla, using defaults; changes are not saved\n");
+}
+
 int NativeSettings_Save(void)
 {
 	if (s_settingsPath[0] == '\0')

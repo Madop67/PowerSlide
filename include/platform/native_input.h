@@ -29,6 +29,10 @@ void Platform_InputPadVibrate(int port, unsigned char *table, int len);
 int Platform_InputCapturePadSnapshots(struct PlatformInputPadSnapshot *dst, int count);
 int Platform_InputInstallPadSnapshots(const struct PlatformInputPadSnapshot *src, int count);
 void Platform_InputClearInstalledPadSnapshots(void);
+#if defined(CTR_INTERNAL)
+// --input-script: pad 1 follows a script of held buttons by replay frame.
+int Platform_InputLoadScript(const char *path);
+#endif
 int Platform_InputGetStateSize(void);
 int Platform_InputCaptureState(void *dst, int dstSize);
 int Platform_InputRestoreState(const void *src, int srcSize);

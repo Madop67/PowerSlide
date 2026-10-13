@@ -142,6 +142,18 @@ static int NativeArg_IsVersion(const char *arg)
 	return (arg != NULL) && ((strcmp(arg, "--version") == 0) || (strcmp(arg, "-v") == 0));
 }
 
+static int NativeArg_IsPresent(int argc, char *argv[], const char *name)
+{
+	for (int argIndex = 1; argIndex < argc; argIndex++)
+	{
+		if (strcmp(argv[argIndex], name) == 0)
+		{
+			return 1;
+		}
+	}
+	return 0;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -191,7 +203,14 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	NativeSettings_Load(NativeAssets_GetBaseDir());
+	if (NativeArg_IsPresent(argc, argv, "--vanilla"))
+	{
+		NativeSettings_LoadVanilla();
+	}
+	else
+	{
+		NativeSettings_Load(NativeAssets_GetBaseDir());
+	}
 
 #ifdef USE_16BY9
 	printf("[CTR Native] Widescreen\n");
@@ -220,12 +239,31 @@ int main(int argc, char *argv[])
 		Platform_Shutdown();
 		return NativeConsole_Return(1);
 	}
+	for (int argIndex = 1; argIndex < argc; argIndex++)
+	{
+		if ((strcmp(argv[argIndex], "--input-script") == 0) && ((argIndex + 1 >= argc) || !Platform_InputLoadScript(argv[argIndex + 1])))
+		{
+			Platform_LogFlush();
+			Platform_Shutdown();
+			return NativeConsole_Return(1);
+		}
+		if ((strcmp(argv[argIndex], "--screenshot-every") == 0) && (argIndex + 1 < argc))
+		{
+			Platform_SetScreenshotInterval((unsigned int)strtoul(argv[argIndex + 1], NULL, 10));
+		}
+	}
 #else
 	(void)argc;
 	(void)argv;
 #endif
 
-	const int result = CTR_Main();
+	int result = CTR_Main();
+#if defined(CTR_INTERNAL)
+	if (NativeReplayScheduler_GetExitCode() != 0)
+	{
+		result = NativeReplayScheduler_GetExitCode();
+	}
+#endif
 
 	Platform_Shutdown();
 	return NativeConsole_Return(result);

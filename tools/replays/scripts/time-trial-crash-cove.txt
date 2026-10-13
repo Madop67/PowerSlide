@@ -1,0 +1,16 @@
+# Time Trial on Crash Cove as Crash. Frames are replay frames from power-on.
+800 dpad_down
+803 -
+830 cross     # Time Trial
+833 -
+900 cross     # Crash Bandicoot
+903 -
+960 cross     # Crash Cove
+963 -
+1020 cross
+1023 -
+1100 cross
+1450 cross dpad_right
+1475 cross
+1490 cross dpad_left
+1520 cross
