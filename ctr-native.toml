@@ -1,16 +1,21 @@
 # CTR Native settings. Edited by the in-game menu (F1); unknown keys are ignored.
 
 [video]
-display_mode = "fullscreen"
+display_mode = "windowed"
 window_width = 1920
 window_height = 1080
-aspect_ratio = "original"
+aspect_ratio = "widescreen"
+aspect_custom_width = 16
+aspect_custom_height = 10
 hud_position = "edges"
 render_scale = 5
+render_scale_custom = false
+render_scale_percent = 150
 integer_scaling = false
 scale_filter = "smooth"
 texture_filtering = false
-frame_rate = 60
+frame_rate = 20
+frame_rate_match_display = true
 show_fps = true
 
 [input.player1]
