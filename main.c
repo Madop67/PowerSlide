@@ -22,6 +22,7 @@
 #include "platform/native_log.h"
 #include "platform/native_memory.h"
 #include "platform/native_perf.h"
+#include "platform/native_product.h"
 #include "platform/native_replay_scheduler.h"
 #include "platform/native_savestate.h"
 #include "platform/native_settings.h"
@@ -143,7 +144,7 @@ int main(int argc, char *argv[])
 	{
 		if (NativeArg_IsVersion(argv[argIndex]))
 		{
-			printf("CTR Native %s (%s)\n", CTR_NATIVE_VERSION, CTR_NATIVE_BUILD_ID);
+			printf("%s %s (%s)\n", NATIVE_PRODUCT_NAME, CTR_NATIVE_VERSION, CTR_NATIVE_BUILD_ID);
 			return 0;
 		}
 	}

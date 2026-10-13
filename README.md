@@ -1,6 +1,10 @@
-# CTR Native
+# PowerSlide
 
-A native PC port of Crash Team Racing (PS1, 1999), built on top of the [CTR-ModSDK](https://github.com/CTR-tools/CTR-ModSDK) decompilation project.
+A native PC port of Crash Team Racing (PS1, 1999) with an in-game settings menu (F1), forked from [CTR Native](https://github.com/CTR-tools/ctr-native) and built on top of the [CTR-ModSDK](https://github.com/CTR-tools/CTR-ModSDK) decompilation project.
+
+PowerSlide ships no game data and is not affiliated with or endorsed by Sony Interactive Entertainment or Naughty Dog. You need your own NTSC-U disc.
+
+Code, file and target names still say `ctr_native` (for example `ctr_native.exe`) so that upstream changes merge cleanly.
 
 ## Philosophy
 

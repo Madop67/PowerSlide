@@ -1,9 +1,10 @@
-// In-game settings menu built on Dear ImGui (externals/imgui).
-// F1 (or Esc while open) toggles one tabbed "CTR Native" window, styled after
+// PowerSlide in-game settings menu built on Dear ImGui (externals/imgui).
+// F1 (or Esc while open) toggles one tabbed settings window, styled after
 // the game's own orange/yellow-on-blue menus. Overlays such as the FPS counter
 // draw whether or not the menu is open.
 
 #include <platform/native_ui.h>
+#include <platform/native_product.h>
 #include <platform/native_settings.h>
 
 #include "imgui.h"
@@ -24,10 +25,11 @@
 namespace
 {
 
-// Font size at windows up to kReferenceHeight tall; larger windows and
-// high-DPI displays scale the whole UI up from there.
+// Font size for a kReferenceHeight-tall window; the whole UI scales with the
+// window height (never below kMinHeightScale) and with display DPI.
 constexpr float kBaseFontSize = 16.0f;
 constexpr float kReferenceHeight = 720.0f;
+constexpr float kMinHeightScale = 0.75f;
 constexpr float kTitleFontScale = 1.6f;
 
 struct WindowSizePreset
@@ -177,10 +179,12 @@ void UpdateStyleScale()
 	int width = 0;
 	int height = 0;
 	SDL_GetWindowSize(s_window, &width, &height);
-	if (height > kReferenceHeight)
+	if (height > 0)
 	{
-		// Quarter steps keep the style from rebuilding on every pixel of a window drag.
-		scale *= SDL_floorf((height / kReferenceHeight) * 4.0f) / 4.0f;
+		// Follow the window height in eighth steps so a window drag doesn't rebuild the
+		// style every pixel; the floor keeps small windows readable.
+		const float heightScale = SDL_floorf((height / kReferenceHeight) * 8.0f) / 8.0f;
+		scale *= SDL_max(heightScale, kMinHeightScale);
 	}
 
 	if (scale != s_styleScale)
@@ -308,10 +312,11 @@ void DrawVideoTab()
 
 void DrawAboutTab()
 {
-	ImGui::Text("CTR Native %s", CTR_NATIVE_VERSION);
+	ImGui::Text("%s %s", NATIVE_PRODUCT_NAME, CTR_NATIVE_VERSION);
 	ImGui::TextDisabled("Build %s", CTR_NATIVE_BUILD_ID);
 	ImGui::Spacing();
-	ImGui::TextWrapped("A native PC port of Crash Team Racing (NTSC-U), built on the CTR-ModSDK decompilation.");
+	ImGui::TextWrapped("A native PC port of Crash Team Racing (NTSC-U), based on CTR Native and the CTR-ModSDK decompilation. "
+	                   "Not affiliated with or endorsed by Sony Interactive Entertainment or Naughty Dog.");
 	ImGui::Spacing();
 	ImGui::TextDisabled("Settings file");
 	ImGui::TextWrapped("%s", NativeSettings_GetPath());
@@ -330,11 +335,11 @@ void DrawTitle()
 {
 	ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * kTitleFontScale);
 	ImGui::PushStyleColor(ImGuiCol_Text, Color(kYellow));
-	ImGui::TextUnformatted("CTR");
+	ImGui::TextUnformatted("POWER");
 	ImGui::PopStyleColor();
-	ImGui::SameLine();
+	ImGui::SameLine(0.0f, 0.0f);
 	ImGui::PushStyleColor(ImGuiCol_Text, Color(kOrange));
-	ImGui::TextUnformatted("NATIVE");
+	ImGui::TextUnformatted("SLIDE");
 	ImGui::PopStyleColor();
 	ImGui::PopFont();
 
@@ -353,7 +358,7 @@ void DrawMainWindow()
 
 	bool open = true;
 	const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar;
-	if (ImGui::Begin("CTR Native", &open, flags))
+	if (ImGui::Begin(NATIVE_PRODUCT_NAME, &open, flags))
 	{
 		DrawTitle();
 		ImGui::Spacing();

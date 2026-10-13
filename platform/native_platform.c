@@ -8,6 +8,7 @@
 #include "platform/native_input.h"
 #include "platform/native_log.h"
 #include "platform/native_perf.h"
+#include "platform/native_product.h"
 #include "platform/native_renderer.h"
 #include "platform/native_replay_scheduler.h"
 #include "platform/native_savestate.h"
@@ -82,12 +83,14 @@ internal void Platform_CalcFPS(void)
 #endif
 }
 
+// appName still names the log file; the window shows the product name.
 internal void Platform_GetWindowName(const char *appName, char *buffer, size_t bufferSize)
 {
+	(void)appName;
 #ifdef CTR_INTERNAL
-	snprintf(buffer, bufferSize, "%s | Internal", appName);
+	snprintf(buffer, bufferSize, "%s | Internal", NATIVE_PRODUCT_NAME);
 #else
-	snprintf(buffer, bufferSize, "%s", appName);
+	snprintf(buffer, bufferSize, "%s", NATIVE_PRODUCT_NAME);
 #endif
 }
 
