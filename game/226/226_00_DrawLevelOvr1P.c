@@ -2500,6 +2500,13 @@ static int Ovr226_800a34d4_WriteWaterRenderedClippedRecordAtOtEntry(struct PushB
 		return 1;
 	}
 
+	// The clip buffer is sized for retail views. A wider (widescreen) view queues more
+	// near-plane polygons; drop the excess rather than overrun the level data after it.
+	if (!DrawLevelOvr1P_HasClipRecordSpace(recordSize))
+	{
+		return 1;
+	}
+
 	record = (struct DrawLevelOvr1PClipRecord *)cursor;
 	// NOTE(aalhendi): Retail water-rendered clipped-record writers
 	// 0x800a34d4/0x800a3578 store the inherited GP/OT pointer directly.
@@ -4716,6 +4723,13 @@ static int Ovr226_800a4dcc_WriteGround4x1RenderedClippedRecordAtOtEntry(struct P
 		return 1;
 	}
 
+	// The clip buffer is sized for retail views. A wider (widescreen) view queues more
+	// near-plane polygons; drop the excess rather than overrun the level data after it.
+	if (!DrawLevelOvr1P_HasClipRecordSpace(recordSize))
+	{
+		return 1;
+	}
+
 	struct DrawLevelOvr1PClipRecord *record = (struct DrawLevelOvr1PClipRecord *)cursor;
 	record->header = DrawLevelOvr1P_GetRenderedClipRecordHeader(block, count);
 	record->otEntry = (u32)(u32)otEntry;
@@ -6040,6 +6054,13 @@ static int Ovr226_800a6d6c_WriteGround4x2RenderedClippedRecordAtOtEntry(struct P
 		return 1;
 	}
 
+	// The clip buffer is sized for retail views. A wider (widescreen) view queues more
+	// near-plane polygons; drop the excess rather than overrun the level data after it.
+	if (!DrawLevelOvr1P_HasClipRecordSpace(recordSize))
+	{
+		return 1;
+	}
+
 	struct DrawLevelOvr1PClipRecord *record = (struct DrawLevelOvr1PClipRecord *)cursor;
 	record->header = DrawLevelOvr1P_GetRenderedClipRecordHeader(block, count);
 	record->otEntry = (u32)(u32)otEntry;
@@ -6498,6 +6519,13 @@ static int Ovr226_800a898c_WriteDynamicRenderedClippedRecordAtOtEntry(struct Pus
 	}
 
 	if (!DrawLevelOvr1P_ShouldWriteRenderedClippedRecord(projected, indices, count))
+	{
+		return 1;
+	}
+
+	// The clip buffer is sized for retail views. A wider (widescreen) view queues more
+	// near-plane polygons; drop the excess rather than overrun the level data after it.
+	if (!DrawLevelOvr1P_HasClipRecordSpace(recordSize))
 	{
 		return 1;
 	}
