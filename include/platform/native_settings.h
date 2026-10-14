@@ -157,6 +157,8 @@ void NativeSettings_SetPlayerInputDefaults(struct NativePlayerInputSettings *pla
 const char *NativeSettings_PadButtonKey(int button);
 // Loads <baseDir>/ctr-native.toml over the defaults. Returns 1 if a file was read.
 int NativeSettings_Load(const char *baseDir);
+// Uses the defaults (retail behaviour) and never writes the settings file (--vanilla).
+void NativeSettings_LoadVanilla(void);
 // Writes the current settings back to the file chosen by NativeSettings_Load.
 int NativeSettings_Save(void);
 const char *NativeSettings_GetPath(void);

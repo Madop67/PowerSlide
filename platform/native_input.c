@@ -2,6 +2,8 @@
 #include <platform/native_ui.h>
 #include <platform/native_input_config.h>
 #include <platform/native_settings.h>
+#include <platform/native_log.h>
+#include <platform/native_replay_scheduler.h>
 
 #include <macros.h>
 #include "psx/libpad.h"
@@ -96,6 +98,114 @@ internal void NativeInput_SetSnapshotButtons(struct PlatformInputPadSnapshot *sn
 	snapshot->buttons[0] = (u8)(buttons & 0xff);
 	snapshot->buttons[1] = (u8)(buttons >> 8);
 }
+
+#if defined(CTR_INTERNAL)
+// --input-script: pad 1 holds scripted buttons, for recording test replays without
+// playing. Each line is "<replay frame> <button> <button>..." ("-" for none) and holds
+// those buttons from that frame on; '#' starts a comment.
+struct NativeInputScriptStep
+{
+	u32 frame;
+	u16 pressed;
+};
+
+#define NATIVE_INPUT_SCRIPT_STEPS_MAX 4096
+
+global_variable struct NativeInputScriptStep s_scriptSteps[NATIVE_INPUT_SCRIPT_STEPS_MAX];
+global_variable s32 s_scriptStepCount;
+
+int Platform_InputLoadScript(const char *path)
+{
+	FILE *file = fopen(path, "r");
+	char line[512];
+	s32 lineNumber = 0;
+
+	if (file == NULL)
+	{
+		Platform_Log("[CTR Input] cannot open input script: %s\n", path);
+		return 0;
+	}
+
+	s_scriptStepCount = 0;
+	while (fgets(line, sizeof(line), file) != NULL)
+	{
+		char *comment = strchr(line, '#');
+		char *token;
+		char *end = NULL;
+		struct NativeInputScriptStep step;
+
+		lineNumber++;
+		if (comment != NULL)
+		{
+			*comment = '\0';
+		}
+		token = strtok(line, " \t\r\n,");
+		if (token == NULL)
+		{
+			continue;
+		}
+
+		step.frame = (u32)strtoul(token, &end, 10);
+		step.pressed = 0;
+		if ((end == token) || (*end != '\0') || ((s_scriptStepCount > 0) && (step.frame < s_scriptSteps[s_scriptStepCount - 1].frame)))
+		{
+			Platform_Log("[CTR Input] input script line %d: expected a frame number in increasing order\n", lineNumber);
+			fclose(file);
+			return 0;
+		}
+
+		while ((token = strtok(NULL, " \t\r\n,")) != NULL)
+		{
+			s32 button = 0;
+			if (strcmp(token, "-") == 0)
+			{
+				continue;
+			}
+			while ((button < NATIVE_PAD_BUTTON_COUNT) && (strcmp(token, NativeSettings_PadButtonKey(button)) != 0))
+			{
+				button++;
+			}
+			if (button == NATIVE_PAD_BUTTON_COUNT)
+			{
+				Platform_Log("[CTR Input] input script line %d: unknown button \"%s\"\n", lineNumber, token);
+				fclose(file);
+				return 0;
+			}
+			step.pressed |= s_padButtonMasks[button];
+		}
+
+		if (s_scriptStepCount >= NATIVE_INPUT_SCRIPT_STEPS_MAX)
+		{
+			Platform_Log("[CTR Input] input script has more than %d lines\n", NATIVE_INPUT_SCRIPT_STEPS_MAX);
+			fclose(file);
+			return 0;
+		}
+		s_scriptSteps[s_scriptStepCount++] = step;
+	}
+
+	fclose(file);
+	Platform_Log("[CTR Input] input script: %s (%d steps)\n", path, s_scriptStepCount);
+	return 1;
+}
+
+internal void NativeInput_ApplyScript(void)
+{
+	const u32 frame = NativeReplayScheduler_GetFrame();
+	struct PlatformInputPadSnapshot *snapshot = &s_controllers[0].snapshot;
+	u16 pressed = 0;
+
+	if (s_scriptStepCount == 0)
+	{
+		return;
+	}
+
+	for (s32 i = 0; (i < s_scriptStepCount) && (s_scriptSteps[i].frame <= frame); i++)
+	{
+		pressed = s_scriptSteps[i].pressed;
+	}
+	NativeInput_SetSnapshotButtons(snapshot, NativeInput_GetSnapshotButtons(snapshot) & (u16)~pressed);
+}
+#endif
 
 internal void NativeInput_ResetSnapshot(s32 slot)
 {
@@ -752,6 +862,9 @@ void Platform_InputUpdate(void)
 		}
 		NativeInput_ApplyKeyboard(slot, readKeys);
 	}
+#if defined(CTR_INTERNAL)
+	NativeInput_ApplyScript();
+#endif
 	NativeInput_WritePadBus();
 }
 

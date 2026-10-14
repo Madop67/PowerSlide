@@ -1,0 +1,85 @@
+# Arcade single race on Crash Cove (Easy, 3 laps) as Crash: seven AI karts, items and
+# weapons. Holds accelerate and fires items. Frames are replay frames from power-on.
+800 dpad_down
+803 -
+810 dpad_down
+813 -
+830 cross     # Arcade
+833 -
+880 cross     # Single race
+883 -
+930 cross     # 1P
+933 -
+980 cross     # Easy
+983 -
+1040 cross    # Crash Bandicoot
+1043 -
+1100 cross    # Crash Cove
+1103 -
+1130 cross    # 3 laps
+1133 -
+1200 cross
+1350 cross l1
+1353 cross
+1500 cross l1
+1503 cross
+1650 cross l1
+1653 cross
+1800 cross l1
+1803 cross
+1950 cross l1
+1953 cross
+2100 cross l1
+2103 cross
+2250 cross l1
+2253 cross
+2400 cross l1
+2403 cross
+2550 cross l1
+2553 cross
+2700 cross l1
+2703 cross
+2850 cross l1
+2853 cross
+3000 cross l1
+3003 cross
+3150 cross l1
+3153 cross
+3300 cross l1
+3303 cross
+3450 cross l1
+3453 cross
+3600 cross l1
+3603 cross
+3750 cross l1
+3753 cross
+3900 cross l1
+3903 cross
+4050 cross l1
+4053 cross
+4200 cross l1
+4203 cross
+4350 cross l1
+4353 cross
+4500 cross l1
+4503 cross
+4650 cross l1
+4653 cross
+4800 cross l1
+4803 cross
+4950 cross l1
+4953 cross
+5100 cross l1
+5103 cross
+5250 cross l1
+5253 cross
+5400 cross l1
+5403 cross
+5550 cross l1
+5553 cross
+5700 cross l1
+5703 cross
+5850 cross l1
+5853 cross
+6000 cross l1
+6003 cross

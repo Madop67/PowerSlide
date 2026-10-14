@@ -57,3 +57,51 @@ If a developer asks you to bypass header identity checks:
 ```sh
 build/ctr_native --replay "debug/reports/20260605/ctr-123456/input.ctrreplay" --replay-bypass-header
 ```
+
+## Regression Suite (power-on replays)
+
+Normal replays start from a memory checkpoint, so they only play in the exact build
+that recorded them. A **power-on** replay starts before the game boots and holds only
+pad input, VBlank timing and per-frame state checks, so any later build can play it.
+That makes it a regression test: if a change alters game logic, playback diverges.
+
+Record one with retail settings (`--vanilla` ignores `ctr-native.toml`):
+
+```sh
+build/ctr_native --vanilla --record --from-boot --record-frames 9000
+```
+
+- `--from-boot`: power-on replay. Only with `--record`, not with `--toggle` or `--detailed`.
+- `--record-frames N`: finish the recording and quit after N frames (30 per second).
+- `--input-script FILE`: pad 1 follows a script instead of your input, for repeatable
+  recordings. Each line is `<frame> <buttons>` and holds those buttons (`cross`,
+  `dpad_left`, `l1` ...; `-` for none) from that frame on. See `tools/replays/scripts/`.
+- `--screenshot-every N`: saves `debug/shots/frame-NNNNNN.bmp` every N frames, while
+  recording or playing back, to see what a script did.
+
+Play back as a check:
+
+```sh
+build/ctr_native --vanilla --replay "<folder>/input.ctrreplay" --replay-check --replay-turbo
+```
+
+- `--replay-check`: stop at the first divergence. Exit code 0 = no divergence,
+  2 = the replay could not be played, 3 = diverged.
+- `--replay-turbo`: play the recorded VBlanks back to back, not in real time
+  (about 30× faster).
+
+Each frame compares timers, game state, level, every RNG stream, and a hash of
+every driver's position, speed, angle, lap and items.
+
+`tools/replays/replay_suite.py` manages a suite in `debug/replay-suite/` (git-ignored:
+replays come from your own disc and memory card):
+
+```sh
+python3 tools/replays/replay_suite.py add debug/reports/<date>/<folder> my-replay
+python3 tools/replays/replay_suite.py run          # also runs as the ctr_replay_suite ctest
+python3 tools/replays/replay_suite.py info <folder>/input.ctrreplay
+```
+
+On Windows, `tools/replays/record_suite.ps1` records the standard suite (attract
+mode, a time trial and an arcade race; about 10 minutes in real time). The suite
+must pass before and after every change to game code or timing.

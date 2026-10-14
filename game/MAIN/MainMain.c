@@ -30,6 +30,49 @@ static struct NativePerfFrameInfo MainPerf_FrameInfo(struct GameTracker *gGT)
 	return info;
 }
 
+// FNV-1a over each driver's position, speed, angle, lap and items. Only plain
+// values: pointers differ between builds and runs.
+static u32 MainReplayScheduler_DriverHash(struct GameTracker *gGT)
+{
+	u32 hash = 2166136261u;
+
+	// While a level loads, drivers[] still points into memory the loader is
+	// overwriting with data that includes host pointers.
+	if ((sdata->Loading.stage != LOAD_IDLE) || ((gGT->gameMode1 & LOADING) != 0))
+	{
+		return 0;
+	}
+
+	for (s32 i = 0; i < 8; i++)
+	{
+		const struct Driver *driver = gGT->drivers[i];
+		s32 fields[10];
+
+		if (driver == NULL)
+		{
+			continue;
+		}
+
+		fields[0] = i;
+		fields[1] = driver->posCurr.x;
+		fields[2] = driver->posCurr.y;
+		fields[3] = driver->posCurr.z;
+		fields[4] = driver->speedApprox;
+		fields[5] = driver->angle;
+		fields[6] = driver->lapIndex;
+		fields[7] = driver->numWumpas;
+		fields[8] = driver->heldItemID;
+		fields[9] = driver->reserves;
+
+		for (u32 byte = 0; byte < sizeof(fields); byte++)
+		{
+			hash = (hash ^ ((const u8 *)fields)[byte]) * 16777619u;
+		}
+	}
+
+	return hash;
+}
+
 static struct NativeReplaySchedulerFrameInfo MainReplayScheduler_FrameInfo(struct GameTracker *gGT)
 {
 	struct NativeReplaySchedulerFrameInfo info;
@@ -50,6 +93,7 @@ static struct NativeReplaySchedulerFrameInfo MainReplayScheduler_FrameInfo(struc
 	info.deadcoed1 = (u32)gGT->deadcoed_struct.state1;
 	info.advRng0 = sdata->advRng.state0;
 	info.advRng1 = sdata->advRng.state1;
+	info.driverHash = MainReplayScheduler_DriverHash(gGT);
 
 	return info;
 }
