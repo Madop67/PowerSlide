@@ -156,13 +156,28 @@ enum NativeFastBoot
 	NATIVE_FAST_BOOT_COUNT
 };
 
+// Shown as the menu's Tweaks tab; the settings file keeps the [game] section name.
 struct NativeGameSettings
 {
 	int fastBoot;
+	// Every character is selectable, without changing the save.
+	int unlockAllCharacters;
+	// Retail's turbo cheat: start each race with turbos that never run out.
+	int unlimitedTurbo;
+	// Retail's wumpa cheat: start each race with full wumpa that never drops.
+	int unlimitedWumpa;
+};
+
+struct NativeGlobalSettings
+{
+	// Runs every preset setting at its retail value (see NativeSettings_RefreshPs1Mode);
+	// the chosen values are kept and come back when it is turned off.
+	int ps1Mode;
 };
 
 struct NativeSettings
 {
+	struct NativeGlobalSettings global;
 	struct NativeGameSettings game;
 	struct NativeVideoSettings video;
 	struct NativeInputSettings input;
@@ -198,7 +213,13 @@ struct NativeCVar
 	int maxValue;
 	// Enum value names, indexed by value.
 	const char *const *names;
+	// NATIVE_CVAR_FLAG_*.
+	int flags;
 };
+
+// Part of a preset, and reset by PS1 mode: game behaviour and picture options. Controls,
+// the window and the FPS counter are not.
+#define NATIVE_CVAR_FLAG_PRESET 1
 
 int NativeCVar_Count(void);
 const struct NativeCVar *NativeCVar_At(int index);
@@ -214,6 +235,12 @@ void NativeCVar_Format(const struct NativeCVar *cvar, char *out, size_t outSize)
 int NativeSettings_ApplyOverrides(int argc, char **argv);
 
 void NativeSettings_SetDefaults(struct NativeSettings *settings);
+// Sets every preset setting to its retail value.
+void NativeSettings_SetRetail(struct NativeSettings *settings);
+// Brings the preset settings in line with global.ps1Mode after it changes: turning it on keeps
+// the chosen values aside and runs retail values; turning it off restores them. Saving always
+// writes the chosen values. The caller applies and saves.
+void NativeSettings_RefreshPs1Mode(void);
 void NativeSettings_SetInputDefaults(struct NativeInputSettings *input);
 // Player 1 gets the classic keyboard layout; other players start with no keys.
 void NativeSettings_SetPlayerInputDefaults(struct NativePlayerInputSettings *player, int playerIndex);
@@ -226,6 +253,31 @@ void NativeSettings_LoadVanilla(void);
 // Writes the current settings back to the file chosen by NativeSettings_Load.
 int NativeSettings_Save(void);
 const char *NativeSettings_GetPath(void);
+
+// Presets: named sets of the preset settings (NATIVE_CVAR_FLAG_PRESET). Two are built in;
+// custom ones are saved to ctr-native-presets.toml next to the settings file.
+#define NATIVE_PRESET_NAME_MAX   32
+#define NATIVE_PRESET_CUSTOM_MAX 16
+enum NativeBuiltinPreset
+{
+	NATIVE_PRESET_VANILLA = 0,
+	NATIVE_PRESET_ENHANCED,
+	NATIVE_PRESET_BUILTIN_COUNT
+};
+
+int NativePreset_Count(void);
+const char *NativePreset_Name(int index);
+int NativePreset_IsCustom(int index);
+// Index of the preset with this name (case-insensitive), or -1.
+int NativePreset_Find(const char *name);
+// 1 if g_settings' preset settings equal the preset's.
+int NativePreset_Matches(int index);
+// Copies the preset's settings into g_settings. The caller applies and saves.
+void NativePreset_Apply(int index);
+// Saves g_settings' preset settings as a custom preset, replacing one with the same name.
+// Returns its index, or -1 if the name is empty, built in, or there is no room.
+int NativePreset_SaveCustom(const char *name);
+void NativePreset_DeleteCustom(int index);
 
 // Applies g_settings.video to the window and renderer (implemented by the platform layer).
 void Platform_ApplyVideoSettings(void);

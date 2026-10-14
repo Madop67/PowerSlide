@@ -378,6 +378,12 @@ u32 w2c_env_SDL_SetWindowFullscreen(struct w2c_env *env, u32 window, u32 fullscr
 	return SDL_SetWindowFullscreen(H2P(SDL_Window, window), fullscreen != 0);
 }
 
+u32 w2c_env_SDL_SetWindowIcon(struct w2c_env *env, u32 window, u32 icon)
+{
+	(void)env;
+	return SDL_SetWindowIcon(H2P(SDL_Window, window), H2P(SDL_Surface, icon));
+}
+
 u32 w2c_env_SDL_GL_SetAttribute(struct w2c_env *env, u32 attr, u32 value)
 {
 	(void)env;

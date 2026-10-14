@@ -146,6 +146,10 @@ target_link_libraries(ctr_native_ui PUBLIC SDL3::SDL3 ${CMAKE_DL_LIBS})
 
 # CTR Native
 add_executable(ctr_native main.c)
+if(WIN32)
+    # Executable icon for Explorer and shortcuts.
+    target_sources(ctr_native PRIVATE platform/windows/ctr_native.rc)
+endif()
 set_target_properties(ctr_native PROPERTIES
     C_STANDARD 17
     C_STANDARD_REQUIRED ON

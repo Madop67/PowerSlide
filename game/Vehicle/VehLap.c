@@ -54,6 +54,17 @@ void VehLap_UpdateProgress(struct Driver *driver)
 	{
 		return;
 	}
+#if defined(CTR_NATIVE)
+	// NOTE: Retail only rejects the invalid checkpoint (0xff) for players. A bot on a
+	// quad without one indexes far past the restart points; on PS1 that reads PS1
+	// addresses, here it reads host pointers that move with every build, so the bot's
+	// progress (and the race, through rubber-banding) would change from build to build.
+	// Skip the update as retail does for players.
+	if (checkpointIndex >= level->cnt_restart_points)
+	{
+		return;
+	}
+#endif
 
 	nodes = level->ptr_restart_points;
 	checkpointNode = &nodes[checkpointIndex];

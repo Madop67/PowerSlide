@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/powerslide-logo.png" alt="PowerSlide" width="480"></p>
+
 # PowerSlide
 
 A native PC port of Crash Team Racing (PS1, 1999) with an in-game settings menu (F1), forked from [CTR Native](https://github.com/CTR-tools/ctr-native) and built on top of the [CTR-ModSDK](https://github.com/CTR-tools/CTR-ModSDK) decompilation project.

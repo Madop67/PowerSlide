@@ -1,5 +1,17 @@
 #include <common.h>
 
+#if defined(CTR_NATIVE)
+#include <platform/native_hooks.h>
+
+// Lets native options (game.unlock_all_characters) override a character-select unlock check.
+static b32 MM_Characters_NativeUnlocked(b32 unlocked)
+{
+	int nativeUnlocked = unlocked ? 1 : 0;
+	NATIVE_HOOK(CharacterUnlocked, &nativeUnlocked);
+	return nativeUnlocked;
+}
+#endif
+
 enum
 {
 	MM_CHARACTER_SELECT_SCREEN_W = 0x200,
@@ -176,7 +188,11 @@ s32 MM_Characters_GetNextDriver(s32 direction, s16 characterID)
 	    // if desired driver is not unlocked by default
 	    (unlocked != MM_CHARACTER_UNLOCK_ALWAYS) &&
 
+#if defined(CTR_NATIVE)
+	    !MM_Characters_NativeUnlocked(CHECK_ADV_BIT(GAME_PROGRESS.unlocks, unlocked)))
+#else
 	    !CHECK_ADV_BIT(GAME_PROGRESS.unlocks, unlocked))
+#endif
 	{
 		// set new driver to the driver you already have
 		nextIcon = characterID;
@@ -620,7 +636,11 @@ void MM_Characters_SetMenuLayout(void)
 		unlocked = meta1P2P[iconIndex].unlockFlags;
 		unlockWord = (u32 *)((u32)((unlocked >> 5) * sizeof(*unlockWord)) + (u32)progress);
 
+#if defined(CTR_NATIVE)
+		if (MM_Characters_NativeUnlocked((unlockWord[1] >> (unlocked & 0x1f)) & 1))
+#else
 		if ((unlockWord[1] >> (unlocked & 0x1f)) & 1)
+#endif
 		{
 			expandRoster = true;
 			MM_CHARACTER_SELECT_ROSTER_EXPANDED = true;
@@ -797,7 +817,11 @@ void MM_Characters_RestoreIDs(void)
 					// NOTE(aalhendi): Keep the shared loop increment available to both
 					// retail branch delay slots without changing native control flow.
 					CTR_PSX_MEMORY_BARRIER();
+#if defined(CTR_NATIVE)
+					if (!MM_Characters_NativeUnlocked((((u32 *)((u32)((unlocked >> 5) * sizeof(u32)) + (u32)progress))[1] >> (unlocked & 0x1f)) & 1))
+#else
 					if (!((((u32 *)((u32)((unlocked >> 5) * sizeof(u32)) + (u32)progress))[1] >> (unlocked & 0x1f)) & 1))
+#endif
 					{
 						// If the character is locked, change it to Crash
 						*currID = CRASH_BANDICOOT;
@@ -971,7 +995,11 @@ void MM_Characters_MenuProc(struct RectMenu *unused)
 	case MM_CHARACTER_SELECT_LAYOUT_4P:
 
 		// If Fake Crash is unlocked, do not draw "Select Character"
+#if defined(CTR_NATIVE)
+		if (MM_Characters_NativeUnlocked((GAME_PROGRESS.unlocks[0] & UNLOCK_FAKE_CRASH) != 0))
+#else
 		if (GAME_PROGRESS.unlocks[0] & UNLOCK_FAKE_CRASH)
+#endif
 		{
 			goto dontDrawSelectCharacter;
 		}

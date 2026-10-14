@@ -40,6 +40,7 @@
 
 #include "platform/native_disc_image.c"
 #include "platform/native_assets.c"
+#include "platform/native_branding.c"
 #include "platform/native_audio.c"
 #include "platform/native_memory.c"
 #include "platform/native_checkpoint.c"
@@ -71,6 +72,7 @@
 #include "platform/native_settings.c"
 #include "platform/native_state.c"
 #include "platform/native_str.c"
+#include "platform/native_tweaks.c"
 
 #if defined(CTR_NATIVE_WASM)
 #include "platform/wasm/guest_wasm.c"
