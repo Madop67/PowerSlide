@@ -1,7 +1,7 @@
 #include <common.h>
 
 #if defined(CTR_NATIVE)
-#include <platform/native_interp.h>
+#include <platform/native_hooks.h>
 #endif
 
 #if defined(CTR_NATIVE) && defined(CTR_INTERNAL)
@@ -466,7 +466,7 @@ u32 main(void)
 
 
 #ifdef CTR_NATIVE
-			NativeInterp_RenderBetweenTicks(gGT, gGS);
+			NATIVE_HOOK(BeforeDraw, gGT, gGS);
 			Platform_BeginFrame();
 #endif
 #if defined(CTR_NATIVE) && defined(CTR_INTERNAL)
@@ -478,7 +478,7 @@ u32 main(void)
 #endif
 #ifdef CTR_NATIVE
 			Platform_EndFrame();
-			NativeInterp_EndTick(gGT);
+			NATIVE_HOOK(AfterPresent, gGT);
 #endif
 
 

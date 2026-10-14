@@ -13,15 +13,18 @@ struct GameTracker;
 struct GamepadSystem;
 
 // Draws and presents the in-between frames due before this tick's real frame.
-// Called after MainFrame_GameLogic and before MainFrame_RenderFrame.
+// Runs on the BeforeDraw hook: after MainFrame_GameLogic, before MainFrame_RenderFrame.
 void NativeInterp_RenderBetweenTicks(struct GameTracker *gGT, struct GamepadSystem *gGamepads);
 
-// Records the transforms the real frame was drawn with. Called after it is presented.
+// Records the transforms the real frame was drawn with. Runs on the AfterPresent hook.
 void NativeInterp_EndTick(struct GameTracker *gGT);
 
 // True while an in-between frame is being drawn. MainFrame_RenderFrame skips its
 // logic-side work and its submit, and host side effects (audio, XA, STR video,
 // memory card, CD) become no-ops.
 int NativeInterp_InRenderPass(void);
+
+// Subscribes to the BeforeDraw and AfterPresent hooks.
+void NativeInterp_RegisterHooks(void);
 
 #endif

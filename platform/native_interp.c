@@ -6,6 +6,7 @@
 
 #include "ctr_scratchpad.h"
 #include "platform/native_gpu.h"
+#include "platform/native_hooks.h"
 #include "platform/native_memory.h"
 #include "platform/native_settings.h"
 #if defined(CTR_INTERNAL)
@@ -524,4 +525,10 @@ void NativeInterp_RenderBetweenTicks(struct GameTracker *gGT, struct GamepadSyst
 
 	activeDrawEnv = savedDrawEnv;
 	activeDispEnv = savedDispEnv;
+}
+
+void NativeInterp_RegisterHooks(void)
+{
+	NativeHook_RegisterBeforeDraw(NativeInterp_RenderBetweenTicks);
+	NativeHook_RegisterAfterPresent(NativeInterp_EndTick);
 }

@@ -19,6 +19,7 @@
 #define ExitCriticalSection()
 
 #include "platform/native_assets.h"
+#include "platform/native_hooks.h"
 #include "platform/native_log.h"
 #include "platform/native_memory.h"
 #include "platform/native_perf.h"
@@ -47,6 +48,7 @@
 #include "platform/native_gpu_links.c"
 #include "platform/native_gpu.c"
 #include "platform/native_gte_core.c"
+#include "platform/native_hooks.c"
 #include "platform/native_glad.c"
 #include "platform/native_input.c"
 #include "platform/native_inline_c.c"
@@ -261,6 +263,8 @@ int main(int argc, char *argv[])
 	(void)argc;
 	(void)argv;
 #endif
+
+	NativeHooks_RegisterModules();
 
 	int result = CTR_Main();
 #if defined(CTR_INTERNAL)
