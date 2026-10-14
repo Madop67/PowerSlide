@@ -17,34 +17,11 @@
 #define NATIVE_SETTINGS_LINE_MAX  256
 #define NATIVE_SETTINGS_DESC_MAX  320
 #define NATIVE_SETTINGS_KEY_MAX   40
+#define NATIVE_CVAR_TEXT_MAX      160
 
 struct NativeSettings g_settings;
 
 global_variable char s_settingsPath[1024];
-
-enum NativeSettingType
-{
-	NATIVE_SETTING_INT,
-	NATIVE_SETTING_BOOL,
-	NATIVE_SETTING_ENUM,
-	// SDL scancode, saved by key name ("Left Shift"); 0 = "none".
-	NATIVE_SETTING_SCANCODE,
-	// Gamepad binding (see NATIVE_PAD_BIND_*), saved by SDL name ("a", "+lefttrigger").
-	NATIVE_SETTING_PAD_BINDING,
-	// char[maxValue], saved quoted.
-	NATIVE_SETTING_STRING,
-};
-
-struct NativeSettingDesc
-{
-	const char *section;
-	const char *key;
-	enum NativeSettingType type;
-	size_t offset;
-	int minValue;
-	int maxValue;
-	const char *const *names;
-};
 
 global_variable const char *const s_displayModeNames[NATIVE_DISPLAY_COUNT] = {"windowed", "fullscreen"};
 global_variable const char *const s_aspectModeNames[NATIVE_ASPECT_COUNT] = {"original", "widescreen", "ultrawide", "custom", "stretch"};
@@ -64,38 +41,38 @@ global_variable const char *const s_padButtonKeys[NATIVE_PAD_BUTTON_COUNT] = {
 	(offsetof(struct NativeSettings, input.players) + ((size_t)(player) * sizeof(struct NativePlayerInputSettings)) + \
 	 offsetof(struct NativePlayerInputSettings, field))
 
-global_variable const struct NativeSettingDesc s_fixedDescs[] = {
-	{"video", "display_mode", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(displayMode), 0, NATIVE_DISPLAY_COUNT - 1, s_displayModeNames},
-	{"video", "window_width", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(windowWidth), 0, 16384, NULL},
-	{"video", "window_height", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(windowHeight), 0, 16384, NULL},
-	{"video", "aspect_ratio", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(aspectMode), 0, NATIVE_ASPECT_COUNT - 1, s_aspectModeNames},
-	{"video", "aspect_custom_width", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(aspectCustomWidth), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL},
-	{"video", "aspect_custom_height", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(aspectCustomHeight), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL},
-	{"video", "hud_position", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(hudPosition), 0, NATIVE_HUD_POSITION_COUNT - 1, s_hudPositionNames},
-	{"video", "render_scale", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(renderScale), 1, NATIVE_RENDER_SCALE_MAX, NULL},
-	{"video", "render_scale_custom", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(renderScaleCustom), 0, 1, NULL},
-	{"video", "render_scale_percent", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(renderScalePercent), NATIVE_RENDER_SCALE_PERCENT_MIN, NATIVE_RENDER_SCALE_PERCENT_MAX, NULL},
-	{"video", "integer_scaling", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(integerScaling), 0, 1, NULL},
-	{"video", "scale_filter", NATIVE_SETTING_ENUM, NATIVE_VIDEO_OFFSET(scaleFilter), 0, NATIVE_SCALE_FILTER_COUNT - 1, s_scaleFilterNames},
-	{"video", "texture_filtering", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(textureFiltering), 0, 1, NULL},
-	{"video", "frame_rate", NATIVE_SETTING_INT, NATIVE_VIDEO_OFFSET(frameRate), NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX, NULL},
-	{"video", "frame_rate_match_display", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(frameRateMatchDisplay), 0, 1, NULL},
-	{"video", "show_fps", NATIVE_SETTING_BOOL, NATIVE_VIDEO_OFFSET(showFps), 0, 1, NULL},
+global_variable const struct NativeCVar s_fixedDescs[] = {
+	{"video", "display_mode", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(displayMode), 0, NATIVE_DISPLAY_COUNT - 1, s_displayModeNames},
+	{"video", "window_width", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowWidth), 0, 16384, NULL},
+	{"video", "window_height", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowHeight), 0, 16384, NULL},
+	{"video", "aspect_ratio", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(aspectMode), 0, NATIVE_ASPECT_COUNT - 1, s_aspectModeNames},
+	{"video", "aspect_custom_width", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(aspectCustomWidth), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL},
+	{"video", "aspect_custom_height", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(aspectCustomHeight), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL},
+	{"video", "hud_position", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(hudPosition), 0, NATIVE_HUD_POSITION_COUNT - 1, s_hudPositionNames},
+	{"video", "render_scale", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(renderScale), 1, NATIVE_RENDER_SCALE_MAX, NULL},
+	{"video", "render_scale_custom", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(renderScaleCustom), 0, 1, NULL},
+	{"video", "render_scale_percent", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(renderScalePercent), NATIVE_RENDER_SCALE_PERCENT_MIN, NATIVE_RENDER_SCALE_PERCENT_MAX, NULL},
+	{"video", "integer_scaling", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(integerScaling), 0, 1, NULL},
+	{"video", "scale_filter", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(scaleFilter), 0, NATIVE_SCALE_FILTER_COUNT - 1, s_scaleFilterNames},
+	{"video", "texture_filtering", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(textureFiltering), 0, 1, NULL},
+	{"video", "frame_rate", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(frameRate), NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX, NULL},
+	{"video", "frame_rate_match_display", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(frameRateMatchDisplay), 0, 1, NULL},
+	{"video", "show_fps", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(showFps), 0, 1, NULL},
 };
 
 // Fixed settings plus the per-player input settings generated by NativeSettings_RegisterDescs.
-global_variable struct NativeSettingDesc s_settingDescs[NATIVE_SETTINGS_DESC_MAX];
+global_variable struct NativeCVar s_settingDescs[NATIVE_SETTINGS_DESC_MAX];
 global_variable char s_generatedKeys[NATIVE_SETTINGS_DESC_MAX][NATIVE_SETTINGS_KEY_MAX];
 global_variable int s_settingCount;
 
-internal void NativeSettings_AddGenerated(int player, const char *key, enum NativeSettingType type, size_t offset, int minValue, int maxValue)
+internal void NativeSettings_AddGenerated(int player, const char *key, enum NativeCVarType type, size_t offset, int minValue, int maxValue)
 {
 	if (s_settingCount >= NATIVE_SETTINGS_DESC_MAX)
 	{
 		return;
 	}
 	snprintf(s_generatedKeys[s_settingCount], NATIVE_SETTINGS_KEY_MAX, "%s", key);
-	struct NativeSettingDesc *desc = &s_settingDescs[s_settingCount++];
+	struct NativeCVar *desc = &s_settingDescs[s_settingCount++];
 	desc->section = s_playerSections[player];
 	desc->key = s_generatedKeys[s_settingCount - 1];
 	desc->type = type;
@@ -120,20 +97,20 @@ internal void NativeSettings_RegisterDescs(void)
 	char key[NATIVE_SETTINGS_KEY_MAX];
 	for (int player = 0; player < NATIVE_INPUT_PLAYERS; player++)
 	{
-		NativeSettings_AddGenerated(player, "controller", NATIVE_SETTING_STRING, NATIVE_PLAYER_OFFSET(player, controllerId), 0, NATIVE_CONTROLLER_ID_MAX);
-		NativeSettings_AddGenerated(player, "controller_name", NATIVE_SETTING_STRING, NATIVE_PLAYER_OFFSET(player, controllerName), 0, NATIVE_CONTROLLER_NAME_MAX);
-		NativeSettings_AddGenerated(player, "stick_deadzone", NATIVE_SETTING_INT, NATIVE_PLAYER_OFFSET(player, stickDeadzone), 0, 50);
-		NativeSettings_AddGenerated(player, "analog_press_point", NATIVE_SETTING_INT, NATIVE_PLAYER_OFFSET(player, analogPressPoint), 10, 90);
-		NativeSettings_AddGenerated(player, "rumble", NATIVE_SETTING_BOOL, NATIVE_PLAYER_OFFSET(player, rumble), 0, 1);
-		NativeSettings_AddGenerated(player, "rumble_strength", NATIVE_SETTING_INT, NATIVE_PLAYER_OFFSET(player, rumbleStrength), 0, 100);
+		NativeSettings_AddGenerated(player, "controller", NATIVE_CVAR_STRING, NATIVE_PLAYER_OFFSET(player, controllerId), 0, NATIVE_CONTROLLER_ID_MAX);
+		NativeSettings_AddGenerated(player, "controller_name", NATIVE_CVAR_STRING, NATIVE_PLAYER_OFFSET(player, controllerName), 0, NATIVE_CONTROLLER_NAME_MAX);
+		NativeSettings_AddGenerated(player, "stick_deadzone", NATIVE_CVAR_INT, NATIVE_PLAYER_OFFSET(player, stickDeadzone), 0, 50);
+		NativeSettings_AddGenerated(player, "analog_press_point", NATIVE_CVAR_INT, NATIVE_PLAYER_OFFSET(player, analogPressPoint), 10, 90);
+		NativeSettings_AddGenerated(player, "rumble", NATIVE_CVAR_BOOL, NATIVE_PLAYER_OFFSET(player, rumble), 0, 1);
+		NativeSettings_AddGenerated(player, "rumble_strength", NATIVE_CVAR_INT, NATIVE_PLAYER_OFFSET(player, rumbleStrength), 0, 100);
 		for (int button = 0; button < NATIVE_PAD_BUTTON_COUNT; button++)
 		{
 			snprintf(key, sizeof(key), "keyboard_%s", s_padButtonKeys[button]);
-			NativeSettings_AddGenerated(player, key, NATIVE_SETTING_SCANCODE, NATIVE_PLAYER_OFFSET(player, keyboard[button][0]), 0, 0);
+			NativeSettings_AddGenerated(player, key, NATIVE_CVAR_SCANCODE, NATIVE_PLAYER_OFFSET(player, keyboard[button][0]), 0, 0);
 			snprintf(key, sizeof(key), "keyboard_%s_alt", s_padButtonKeys[button]);
-			NativeSettings_AddGenerated(player, key, NATIVE_SETTING_SCANCODE, NATIVE_PLAYER_OFFSET(player, keyboard[button][1]), 0, 0);
+			NativeSettings_AddGenerated(player, key, NATIVE_CVAR_SCANCODE, NATIVE_PLAYER_OFFSET(player, keyboard[button][1]), 0, 0);
 			snprintf(key, sizeof(key), "gamepad_%s", s_padButtonKeys[button]);
-			NativeSettings_AddGenerated(player, key, NATIVE_SETTING_PAD_BINDING, NATIVE_PLAYER_OFFSET(player, gamepad[button]), 0, 0);
+			NativeSettings_AddGenerated(player, key, NATIVE_CVAR_PAD_BINDING, NATIVE_PLAYER_OFFSET(player, gamepad[button]), 0, 0);
 		}
 	}
 }
@@ -143,12 +120,12 @@ const char *NativeSettings_PadButtonKey(int button)
 	return ((button >= 0) && (button < NATIVE_PAD_BUTTON_COUNT)) ? s_padButtonKeys[button] : "";
 }
 
-internal int *NativeSettings_Field(struct NativeSettings *settings, const struct NativeSettingDesc *desc)
+internal int *NativeSettings_Field(struct NativeSettings *settings, const struct NativeCVar *desc)
 {
 	return (int *)((char *)settings + desc->offset);
 }
 
-internal char *NativeSettings_TextField(struct NativeSettings *settings, const struct NativeSettingDesc *desc)
+internal char *NativeSettings_TextField(struct NativeSettings *settings, const struct NativeCVar *desc)
 {
 	return (char *)settings + desc->offset;
 }
@@ -298,13 +275,13 @@ internal void NativeSettings_FormatPadBinding(int binding, char *out, size_t out
 	snprintf(out, outSize, "%s", name ? name : "none");
 }
 
-internal int NativeSettings_ParseValue(const struct NativeSettingDesc *desc, const char *value, int *out)
+internal int NativeSettings_ParseValue(const struct NativeCVar *desc, const char *value, int *out)
 {
 	char text[64];
 
 	switch (desc->type)
 	{
-	case NATIVE_SETTING_BOOL:
+	case NATIVE_CVAR_BOOL:
 		if (strcmp(value, "true") == 0)
 		{
 			*out = 1;
@@ -317,7 +294,7 @@ internal int NativeSettings_ParseValue(const struct NativeSettingDesc *desc, con
 		}
 		return 0;
 
-	case NATIVE_SETTING_ENUM:
+	case NATIVE_CVAR_ENUM:
 		if (!NativeSettings_Unquote(value, text, sizeof(text)))
 		{
 			return 0;
@@ -332,7 +309,7 @@ internal int NativeSettings_ParseValue(const struct NativeSettingDesc *desc, con
 		}
 		return 0;
 
-	case NATIVE_SETTING_INT:
+	case NATIVE_CVAR_INT:
 	{
 		char *end = NULL;
 		long parsed = strtol(value, &end, 10);
@@ -344,7 +321,7 @@ internal int NativeSettings_ParseValue(const struct NativeSettingDesc *desc, con
 		return 1;
 	}
 
-	case NATIVE_SETTING_SCANCODE:
+	case NATIVE_CVAR_SCANCODE:
 		if (!NativeSettings_Unquote(value, text, sizeof(text)))
 		{
 			return 0;
@@ -357,10 +334,10 @@ internal int NativeSettings_ParseValue(const struct NativeSettingDesc *desc, con
 		*out = (int)SDL_GetScancodeFromName(text);
 		return *out != SDL_SCANCODE_UNKNOWN;
 
-	case NATIVE_SETTING_PAD_BINDING:
+	case NATIVE_CVAR_PAD_BINDING:
 		return NativeSettings_Unquote(value, text, sizeof(text)) && NativeSettings_ParsePadBinding(text, out);
 
-	case NATIVE_SETTING_STRING:
+	case NATIVE_CVAR_STRING:
 		// Read through NativeSettings_ParseText.
 		return 0;
 	}
@@ -368,7 +345,7 @@ internal int NativeSettings_ParseValue(const struct NativeSettingDesc *desc, con
 	return 0;
 }
 
-internal const struct NativeSettingDesc *NativeSettings_Find(const char *section, const char *key)
+internal const struct NativeCVar *NativeSettings_Find(const char *section, const char *key)
 {
 	for (int i = 0; i < s_settingCount; i++)
 	{
@@ -378,6 +355,153 @@ internal const struct NativeSettingDesc *NativeSettings_Find(const char *section
 		}
 	}
 	return NULL;
+}
+
+int NativeCVar_Count(void)
+{
+	NativeSettings_RegisterDescs();
+	return s_settingCount;
+}
+
+const struct NativeCVar *NativeCVar_At(int index)
+{
+	NativeSettings_RegisterDescs();
+	return ((index >= 0) && (index < s_settingCount)) ? &s_settingDescs[index] : NULL;
+}
+
+const struct NativeCVar *NativeCVar_Find(const char *name)
+{
+	char section[64];
+	const char *dot = (name != NULL) ? strrchr(name, '.') : NULL;
+
+	// Sections hold dots ("input.player1"); keys never do.
+	if ((dot == NULL) || ((size_t)(dot - name) >= sizeof(section)))
+	{
+		return NULL;
+	}
+	memcpy(section, name, (size_t)(dot - name));
+	section[dot - name] = '\0';
+
+	NativeSettings_RegisterDescs();
+	return NativeSettings_Find(section, dot + 1);
+}
+
+int NativeCVar_SetFromText(const struct NativeCVar *cvar, const char *text)
+{
+	char quoted[NATIVE_CVAR_TEXT_MAX];
+	int value;
+
+	if ((cvar == NULL) || (text == NULL))
+	{
+		return 0;
+	}
+
+	// Names may come unquoted from the command line.
+	const int isName = (cvar->type == NATIVE_CVAR_ENUM) || (cvar->type == NATIVE_CVAR_SCANCODE) || (cvar->type == NATIVE_CVAR_PAD_BINDING) ||
+	                   (cvar->type == NATIVE_CVAR_STRING);
+	if (isName && (text[0] != '"'))
+	{
+		snprintf(quoted, sizeof(quoted), "\"%s\"", text);
+		text = quoted;
+	}
+
+	if (cvar->type == NATIVE_CVAR_STRING)
+	{
+		char unquoted[NATIVE_CVAR_TEXT_MAX];
+		if (!NativeSettings_Unquote(text, unquoted, (size_t)cvar->maxValue))
+		{
+			return 0;
+		}
+		memcpy(NativeSettings_TextField(&g_settings, cvar), unquoted, strlen(unquoted) + 1);
+		return 1;
+	}
+
+	if (!NativeSettings_ParseValue(cvar, text, &value))
+	{
+		return 0;
+	}
+	*NativeSettings_Field(&g_settings, cvar) = value;
+	return 1;
+}
+
+void NativeCVar_Format(const struct NativeCVar *cvar, char *out, size_t outSize)
+{
+	char text[64];
+
+	if (cvar->type == NATIVE_CVAR_STRING)
+	{
+		snprintf(out, outSize, "\"%s\"", NativeSettings_TextField(&g_settings, cvar));
+		return;
+	}
+
+	const int value = *NativeSettings_Field(&g_settings, cvar);
+	switch (cvar->type)
+	{
+	case NATIVE_CVAR_BOOL:
+		snprintf(out, outSize, "%s", value ? "true" : "false");
+		break;
+	case NATIVE_CVAR_ENUM:
+		snprintf(out, outSize, "\"%s\"", cvar->names[value]);
+		break;
+	case NATIVE_CVAR_SCANCODE:
+	{
+		const char *name = (value != SDL_SCANCODE_UNKNOWN) ? SDL_GetScancodeName((SDL_Scancode)value) : "";
+		snprintf(out, outSize, "\"%s\"", (name[0] != '\0') ? name : "none");
+		break;
+	}
+	case NATIVE_CVAR_PAD_BINDING:
+		NativeSettings_FormatPadBinding(value, text, sizeof(text));
+		snprintf(out, outSize, "\"%s\"", text);
+		break;
+	default:
+		snprintf(out, outSize, "%d", value);
+		break;
+	}
+}
+
+int NativeSettings_ApplyOverrides(int argc, char **argv)
+{
+	for (int i = 1; i < argc; i++)
+	{
+		char name[NATIVE_CVAR_TEXT_MAX];
+		const char *argument;
+		const char *equals;
+		const struct NativeCVar *cvar;
+
+		if (strcmp(argv[i], "--set") != 0)
+		{
+			continue;
+		}
+		if (i + 1 >= argc)
+		{
+			Platform_LogWarn("[CTR Native] Settings: --set needs <name>=<value>\n");
+			return 0;
+		}
+
+		argument = argv[++i];
+		equals = strchr(argument, '=');
+		if ((equals == NULL) || ((size_t)(equals - argument) >= sizeof(name)))
+		{
+			Platform_LogWarn("[CTR Native] Settings: --set %s: expected <name>=<value>\n", argument);
+			return 0;
+		}
+		memcpy(name, argument, (size_t)(equals - argument));
+		name[equals - argument] = '\0';
+
+		cvar = NativeCVar_Find(name);
+		if (cvar == NULL)
+		{
+			Platform_LogWarn("[CTR Native] Settings: --set: unknown setting %s\n", name);
+			return 0;
+		}
+		if (!NativeCVar_SetFromText(cvar, equals + 1))
+		{
+			Platform_LogWarn("[CTR Native] Settings: --set: invalid value for %s: %s\n", name, equals + 1);
+			return 0;
+		}
+		Platform_Log("[CTR Native] Settings: %s = %s (from --set)\n", name, equals + 1);
+	}
+	return 1;
 }
 
 // The old shared layout was loaded into player 1: every player gets its controller layout
@@ -494,13 +618,13 @@ int NativeSettings_Load(const char *baseDir)
 			lookupSection = s_playerSections[0];
 		}
 
-		const struct NativeSettingDesc *desc = NativeSettings_Find(lookupSection, key);
+		const struct NativeCVar *desc = NativeSettings_Find(lookupSection, key);
 		if (desc == NULL)
 		{
 			Platform_LogWarn("[CTR Native] Settings: unknown key %s.%s ignored\n", section, key);
 			continue;
 		}
-		if (desc->type == NATIVE_SETTING_STRING)
+		if (desc->type == NATIVE_CVAR_STRING)
 		{
 			if (!NativeSettings_Unquote(value, NativeSettings_TextField(&g_settings, desc), (size_t)desc->maxValue))
 			{
@@ -552,11 +676,10 @@ int NativeSettings_Save(void)
 	fprintf(file, "# CTR Native settings. Edited by the in-game menu (F1); unknown keys are ignored.\n");
 
 	const char *section = NULL;
-	char text[64];
+	char text[NATIVE_CVAR_TEXT_MAX];
 	for (int i = 0; i < s_settingCount; i++)
 	{
-		const struct NativeSettingDesc *desc = &s_settingDescs[i];
-		const int value = (desc->type == NATIVE_SETTING_STRING) ? 0 : *NativeSettings_Field(&g_settings, desc);
+		const struct NativeCVar *desc = &s_settingDescs[i];
 
 		if ((section == NULL) || (strcmp(section, desc->section) != 0))
 		{
@@ -564,31 +687,8 @@ int NativeSettings_Save(void)
 			fprintf(file, "\n[%s]\n", section);
 		}
 
-		switch (desc->type)
-		{
-		case NATIVE_SETTING_BOOL:
-			fprintf(file, "%s = %s\n", desc->key, value ? "true" : "false");
-			break;
-		case NATIVE_SETTING_ENUM:
-			fprintf(file, "%s = \"%s\"\n", desc->key, desc->names[value]);
-			break;
-		case NATIVE_SETTING_INT:
-			fprintf(file, "%s = %d\n", desc->key, value);
-			break;
-		case NATIVE_SETTING_SCANCODE:
-		{
-			const char *name = (value != SDL_SCANCODE_UNKNOWN) ? SDL_GetScancodeName((SDL_Scancode)value) : "";
-			fprintf(file, "%s = \"%s\"\n", desc->key, (name[0] != '\0') ? name : "none");
-			break;
-		}
-		case NATIVE_SETTING_PAD_BINDING:
-			NativeSettings_FormatPadBinding(value, text, sizeof(text));
-			fprintf(file, "%s = \"%s\"\n", desc->key, text);
-			break;
-		case NATIVE_SETTING_STRING:
-			fprintf(file, "%s = \"%s\"\n", desc->key, NativeSettings_TextField(&g_settings, desc));
-			break;
-		}
+		NativeCVar_Format(desc, text, sizeof(text));
+		fprintf(file, "%s = %s\n", desc->key, text);
 	}
 
 	fclose(file);

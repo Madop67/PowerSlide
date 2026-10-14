@@ -211,6 +211,11 @@ int main(int argc, char *argv[])
 	{
 		NativeSettings_Load(NativeAssets_GetBaseDir());
 	}
+	if (!NativeSettings_ApplyOverrides(argc, argv))
+	{
+		Platform_LogFlush();
+		return NativeConsole_Return(1);
+	}
 
 #ifdef USE_16BY9
 	printf("[CTR Native] Widescreen\n");

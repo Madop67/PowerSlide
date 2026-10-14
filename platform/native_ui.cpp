@@ -1090,7 +1090,14 @@ void DrawAboutTab()
 	                   "Not affiliated with or endorsed by Sony Interactive Entertainment or Naughty Dog.");
 	ImGui::Spacing();
 	ImGui::TextDisabled("Settings file");
-	ImGui::TextWrapped("%s", NativeSettings_GetPath());
+	if (NativeSettings_GetPath()[0] != '\0')
+	{
+		ImGui::TextWrapped("%s", NativeSettings_GetPath());
+	}
+	else
+	{
+		ImGui::TextWrapped("None: started with --vanilla, so changes are not saved.");
+	}
 	ImGui::Spacing();
 	ImGui::TextDisabled("Dear ImGui %s  |  Fredoka font (SIL OFL 1.1)", IMGUI_VERSION);
 	ImGui::Spacing();
