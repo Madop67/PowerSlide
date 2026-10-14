@@ -9,6 +9,7 @@
 #include <platform/native_input_config.h>
 #include <platform/native_product.h>
 #include <platform/native_settings.h>
+#include <platform/native_tweaks.h>
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -1177,16 +1178,14 @@ void DrawInputTab()
 
 constexpr const char *kFastBootNames[NATIVE_FAST_BOOT_COUNT] = {"Off", "Straight to title", "Straight to main menu"};
 
-void DrawTweaksTab()
+// Returns whether a video setting changed (the caller applies it); other changes are saved here.
+bool DrawTweaksGeneral()
 {
 	NativeGameSettings &game = g_settings.game;
 	NativeVideoSettings &video = g_settings.video;
 	const float comboWidth = ImGui::GetFontSize() * 12.0f;
 	bool changed = false;
 	bool videoChanged = false;
-
-	Ps1ModeNotice();
-	ImGui::BeginDisabled(g_settings.global.ps1Mode != 0);
 
 	SectionHeading("Boot");
 
@@ -1200,29 +1199,95 @@ void DrawTweaksTab()
 	videoChanged |= CheckboxInt("Full-colour pause screen", &video.pauseFullColor);
 	HelpTooltip("Show the paused game in full colour behind the pause menu. Off uses the original sepia screenshot.");
 
-	SectionHeading("Cheats");
+	if (changed)
+	{
+		NativeSettings_Save();
+	}
+	return videoChanged;
+}
+
+void DrawTweaksCheats()
+{
+	NativeGameSettings &game = g_settings.game;
+	bool changed = false;
+
+	SectionHeading("Unlocks");
 
 	changed |= CheckboxInt("Unlock all characters", &game.unlockAllCharacters);
 	HelpTooltip("Every character can be picked at character select, including the secret ones. "
 	            "Your save is not changed: turning this off locks them again.");
 
-	changed |= CheckboxInt("Unlimited turbo", &game.unlimitedTurbo);
-	HelpTooltip("Start every race holding turbos that never run out (the game's own cheat). "
-	            "Takes effect from the next race; not used in time trial.");
+	// The game's own cheat codes, by group in table order, two to a row.
+	ImGui::Spacing();
+	ImGui::TextDisabled("The game's own cheat codes, as switches. Codes typed at the main menu still work.");
+	for (int i = 0; i < NativeTweaks_CheatCount();)
+	{
+		const char *group = NativeTweaks_CheatAt(i)->group;
+		SectionHeading(group);
+		ImGui::PushID(group);
+		if (ImGui::BeginTable("##cheats", 2, ImGuiTableFlags_SizingStretchSame))
+		{
+			for (; (i < NativeTweaks_CheatCount()) && (strcmp(NativeTweaks_CheatAt(i)->group, group) == 0); i++)
+			{
+				const NativeCheat *cheat = NativeTweaks_CheatAt(i);
+				ImGui::TableNextColumn();
+				changed |= CheckboxInt(cheat->label, cheat->setting);
+				HelpTooltip(cheat->tooltip);
+			}
+			ImGui::EndTable();
+		}
+		ImGui::PopID();
+	}
 
-	changed |= CheckboxInt("Unlimited wumpa fruit", &game.unlimitedWumpa);
-	HelpTooltip("Start every race with full wumpa fruit that is never lost, so weapons are always juiced up (the game's own cheat). "
-	            "Takes effect from the next race; not used in time trial.");
+	ImGui::Spacing();
+	if (ImGui::Button("Turn all cheats off"))
+	{
+		game.unlockAllCharacters = 0;
+		for (int i = 0; i < NativeTweaks_CheatCount(); i++)
+		{
+			*NativeTweaks_CheatAt(i)->setting = 0;
+		}
+		changed = true;
+	}
+	HelpTooltip("Turns off every switch on this tab. Cheat codes typed at the main menu stay on until the game restarts.");
 
-	ImGui::EndDisabled();
+	if (changed)
+	{
+		NativeSettings_Save();
+	}
+}
+
+void DrawTweaksTab()
+{
+	bool videoChanged = false;
+
+	const bool ps1Mode = g_settings.global.ps1Mode != 0;
+
+	Ps1ModeNotice();
+
+	// PS1 mode locks the options, not the sub-tabs, so they can still be looked through.
+	if (ImGui::BeginTabBar("##tweaks"))
+	{
+		if (ImGui::BeginTabItem("General"))
+		{
+			ImGui::BeginDisabled(ps1Mode);
+			videoChanged |= DrawTweaksGeneral();
+			ImGui::EndDisabled();
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Cheats"))
+		{
+			ImGui::BeginDisabled(ps1Mode);
+			DrawTweaksCheats();
+			ImGui::EndDisabled();
+			ImGui::EndTabItem();
+		}
+		ImGui::EndTabBar();
+	}
 
 	if (videoChanged)
 	{
 		CommitVideoSettings();
-	}
-	else if (changed)
-	{
-		NativeSettings_Save();
 	}
 }
 
