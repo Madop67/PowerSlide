@@ -1081,6 +1081,27 @@ void DrawInputTab()
 	ImGui::TextDisabled("Home / PS button or L3 + R3 opens this menu from a controller. The game keeps running for everyone else.");
 }
 
+//------------------------------------------------------------------------------------------------------------------------
+// Game tab
+
+constexpr const char *kFastBootNames[NATIVE_FAST_BOOT_COUNT] = {"Off", "Straight to title", "Straight to main menu"};
+
+void DrawGameTab()
+{
+	NativeGameSettings &game = g_settings.game;
+	const float comboWidth = ImGui::GetFontSize() * 12.0f;
+
+	SectionHeading("Boot");
+
+	ImGui::SetNextItemWidth(comboWidth);
+	if (ImGui::Combo("Fast boot", &game.fastBoot, kFastBootNames, NATIVE_FAST_BOOT_COUNT))
+	{
+		NativeSettings_Save();
+	}
+	HelpTooltip("Skips the logo screens and the Naughty Dog crate intro; \"Straight to main menu\" also skips the title animation. "
+	            "Takes effect the next time the game starts.");
+}
+
 void DrawAboutTab()
 {
 	ImGui::Text("%s %s", NATIVE_PRODUCT_NAME, CTR_NATIVE_VERSION);
@@ -1152,6 +1173,11 @@ void DrawMainWindow()
 			if (ImGui::BeginTabItem("Input"))
 			{
 				DrawInputTab();
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Game"))
+			{
+				DrawGameTab();
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("About"))

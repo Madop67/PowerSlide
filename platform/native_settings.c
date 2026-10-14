@@ -27,6 +27,7 @@ global_variable const char *const s_displayModeNames[NATIVE_DISPLAY_COUNT] = {"w
 global_variable const char *const s_aspectModeNames[NATIVE_ASPECT_COUNT] = {"original", "widescreen", "ultrawide", "custom", "stretch"};
 global_variable const char *const s_scaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"sharp", "smooth"};
 global_variable const char *const s_hudPositionNames[NATIVE_HUD_POSITION_COUNT] = {"edges", "centre"};
+global_variable const char *const s_fastBootNames[NATIVE_FAST_BOOT_COUNT] = {"off", "title", "menu"};
 
 // One section per player: [input.player1] .. [input.player4].
 global_variable const char *const s_playerSections[NATIVE_INPUT_PLAYERS] = {"input.player1", "input.player2", "input.player3", "input.player4"};
@@ -36,12 +37,14 @@ global_variable const char *const s_padButtonKeys[NATIVE_PAD_BUTTON_COUNT] = {
 	"dpad_up", "dpad_down", "dpad_left", "dpad_right", "start", "select", "l3", "r3",
 };
 
+#define NATIVE_GAME_OFFSET(field)  offsetof(struct NativeSettings, game.field)
 #define NATIVE_VIDEO_OFFSET(field) offsetof(struct NativeSettings, video.field)
 #define NATIVE_PLAYER_OFFSET(player, field)                                                                                 \
 	(offsetof(struct NativeSettings, input.players) + ((size_t)(player) * sizeof(struct NativePlayerInputSettings)) + \
 	 offsetof(struct NativePlayerInputSettings, field))
 
 global_variable const struct NativeCVar s_fixedDescs[] = {
+	{"game", "fast_boot", NATIVE_CVAR_ENUM, NATIVE_GAME_OFFSET(fastBoot), 0, NATIVE_FAST_BOOT_COUNT - 1, s_fastBootNames},
 	{"video", "display_mode", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(displayMode), 0, NATIVE_DISPLAY_COUNT - 1, s_displayModeNames},
 	{"video", "window_width", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowWidth), 0, 16384, NULL},
 	{"video", "window_height", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowHeight), 0, 16384, NULL},

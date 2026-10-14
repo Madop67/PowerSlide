@@ -270,8 +270,8 @@ internal void Platform_TakeScreenshot(void)
 	Platform_SaveScreenshot("SCREENSHOT.BMP");
 }
 
-// --screenshot-every N: saves debug/shots/frame-NNNNNN.bmp every N replay frames, to
-// see what a recorded or scripted replay did.
+// --screenshot-every N: saves debug/shots/frame-NNNNNN.bmp every N frames, to see what a
+// recorded or scripted replay did.
 global_variable u32 s_screenshotEvery;
 global_variable u32 s_lastScreenshotFrame = 0xffffffffu;
 
@@ -286,7 +286,9 @@ void Platform_SetScreenshotInterval(unsigned int frames)
 
 internal void Platform_MaybeTakeIntervalScreenshot(void)
 {
-	const u32 frame = NativeReplayScheduler_GetFrame();
+	// Replay frames while recording or playing back, presented frames otherwise.
+	static u32 presentedFrames;
+	const u32 frame = NativeReplayScheduler_IsActive() ? NativeReplayScheduler_GetFrame() : presentedFrames++;
 	char path[64];
 
 	if ((s_screenshotEvery == 0) || (frame == s_lastScreenshotFrame) || ((frame % s_screenshotEvery) != 0))

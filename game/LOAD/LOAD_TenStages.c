@@ -85,22 +85,29 @@ int LOAD_TenStages(struct GameTracker *unusedGameTracker, int loadingStage, stru
 
 			sdata->boolFirstBoot = 0;
 
-			// Load Intro TIM for Copyright Page from VRAM file
-			LOAD_VramFile(bigfile, LOAD_FIRST_BOOT_COPYRIGHT_TIM_BIGFILE_INDEX, NULL, &vramSize, -1);
-			MainInit_VRAMDisplay();
+#if defined(CTR_NATIVE)
+			// Retail always boots into the Naughty Dog crate; booting anywhere else is
+			// fast boot, which skips the copyright page as well.
+			if (GAME_TRACKER->levelID == NAUGHTY_DOG_CRATE)
+#endif
+			{
+				// Load Intro TIM for Copyright Page from VRAM file
+				LOAD_VramFile(bigfile, LOAD_FIRST_BOOT_COPYRIGHT_TIM_BIGFILE_INDEX, NULL, &vramSize, -1);
+				MainInit_VRAMDisplay();
 
 #ifdef CTR_NATIVE
-			// NOTE(aalhendi): SCEA is already held by XA playback in MainMain. The copyright
-			// TIM has no XA, so keep it visible until the intro CSEQ reaches
-			// the point retail normally reaches while loading the ND crate.
-			// Present every wait tick so both host swapchain images are
-			// overwritten with copyright instead of briefly revealing SCEA.
-			while (((sdata->songPool[0].flags & 3) == 1) && (sdata->songPool[0].timeSpentPlaying < LOAD_NATIVE_NDBOX_INTRO_SONG_SYNC_TIME))
-			{
-				VSync(0);
-				Platform_PresentVRAMDisplay();
-			}
+				// NOTE(aalhendi): SCEA is already held by XA playback in MainMain. The copyright
+				// TIM has no XA, so keep it visible until the intro CSEQ reaches
+				// the point retail normally reaches while loading the ND crate.
+				// Present every wait tick so both host swapchain images are
+				// overwritten with copyright instead of briefly revealing SCEA.
+				while (((sdata->songPool[0].flags & 3) == 1) && (sdata->songPool[0].timeSpentPlaying < LOAD_NATIVE_NDBOX_INTRO_SONG_SYNC_TIME))
+				{
+					VSync(0);
+					Platform_PresentVRAMDisplay();
+				}
 #endif
+			}
 
 			GAME_TRACKER->db[0].drawEnv.isbg = 0;
 			GAME_TRACKER->db[1].drawEnv.isbg = 0;

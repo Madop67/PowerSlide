@@ -143,8 +143,25 @@ struct NativeInputSettings
 	struct NativePlayerInputSettings players[NATIVE_INPUT_PLAYERS];
 };
 
+// game.fast_boot. Saved by name.
+enum NativeFastBoot
+{
+	NATIVE_FAST_BOOT_OFF = 0,
+	// Skip the SCEA and copyright screens and the Naughty Dog crate; boot into the title.
+	NATIVE_FAST_BOOT_TITLE,
+	// Also skip the title animation; boot into the main menu.
+	NATIVE_FAST_BOOT_MENU,
+	NATIVE_FAST_BOOT_COUNT
+};
+
+struct NativeGameSettings
+{
+	int fastBoot;
+};
+
 struct NativeSettings
 {
+	struct NativeGameSettings game;
 	struct NativeVideoSettings video;
 	struct NativeInputSettings input;
 };
