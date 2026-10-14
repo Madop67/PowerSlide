@@ -533,6 +533,9 @@ void DrawVideoTab()
 	changed |= CheckboxInt("Texture filtering", &video.textureFiltering);
 	HelpTooltip("Bilinear filtering of in-game textures. Not part of the original look.");
 
+	changed |= CheckboxInt("Full-colour pause screen", &video.pauseFullColor);
+	HelpTooltip("Show the paused game in full colour behind the pause menu. Off uses the original sepia screenshot.");
+
 	SectionHeading("Overlay");
 	changed |= CheckboxInt("Show FPS counter", &video.showFps);
 

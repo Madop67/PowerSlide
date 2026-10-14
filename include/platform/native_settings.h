@@ -79,6 +79,8 @@ struct NativeVideoSettings
 	int integerScaling;
 	int scaleFilter;
 	int textureFiltering;
+	// Full-colour pause background instead of retail's sepia screenshot.
+	int pauseFullColor;
 	int frameRate;
 	// Follow the display's refresh rate instead of frameRate.
 	int frameRateMatchDisplay;

@@ -58,6 +58,7 @@ global_variable const struct NativeCVar s_fixedDescs[] = {
 	{"video", "integer_scaling", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(integerScaling), 0, 1, NULL},
 	{"video", "scale_filter", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(scaleFilter), 0, NATIVE_SCALE_FILTER_COUNT - 1, s_scaleFilterNames},
 	{"video", "texture_filtering", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(textureFiltering), 0, 1, NULL},
+	{"video", "pause_full_color", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(pauseFullColor), 0, 1, NULL},
 	{"video", "frame_rate", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(frameRate), NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX, NULL},
 	{"video", "frame_rate_match_display", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(frameRateMatchDisplay), 0, 1, NULL},
 	{"video", "show_fps", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(showFps), 0, 1, NULL},
@@ -202,6 +203,7 @@ void NativeSettings_SetDefaults(struct NativeSettings *settings)
 	settings->video.renderScalePercent = 150;
 	settings->video.frameRate = NATIVE_FRAME_RATE_ORIGINAL;
 	settings->video.scaleFilter = NATIVE_SCALE_FILTER_SHARP;
+	settings->video.pauseFullColor = 1;
 	NativeSettings_SetInputDefaults(&settings->input);
 }
 
