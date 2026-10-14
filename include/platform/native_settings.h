@@ -3,6 +3,8 @@
 
 // NOTE: Shared with the C++ UI layer; keep to plain C types.
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -148,6 +150,49 @@ struct NativeSettings
 };
 
 extern struct NativeSettings g_settings;
+
+// CVar registry. Every setting is a CVar named "<section>.<key>", as the settings file
+// groups it: "video.render_scale", "input.player1.stick_deadzone". The settings file and
+// --set on the command line read and write g_settings through it; the menu edits
+// g_settings directly and saves through it.
+enum NativeCVarType
+{
+	NATIVE_CVAR_INT,
+	NATIVE_CVAR_BOOL,
+	NATIVE_CVAR_ENUM,
+	// SDL scancode, saved by key name ("Left Shift"); 0 = "none".
+	NATIVE_CVAR_SCANCODE,
+	// Gamepad binding (see NATIVE_PAD_BIND_*), saved by SDL name ("a", "+lefttrigger").
+	NATIVE_CVAR_PAD_BINDING,
+	// char[maxValue], saved quoted.
+	NATIVE_CVAR_STRING,
+};
+
+struct NativeCVar
+{
+	const char *section;
+	const char *key;
+	enum NativeCVarType type;
+	// Where the value lives in struct NativeSettings.
+	size_t offset;
+	int minValue;
+	int maxValue;
+	// Enum value names, indexed by value.
+	const char *const *names;
+};
+
+int NativeCVar_Count(void);
+const struct NativeCVar *NativeCVar_At(int index);
+// Finds a CVar by its full name ("video.aspect_ratio"). NULL if there is none.
+const struct NativeCVar *NativeCVar_Find(const char *name);
+// Sets a CVar in g_settings from text written as in the settings file (3, true,
+// "widescreen"); names may also be unquoted. Returns 0, changing nothing, if the text is invalid.
+int NativeCVar_SetFromText(const struct NativeCVar *cvar, const char *text);
+// Writes a CVar's current value as the settings file does.
+void NativeCVar_Format(const struct NativeCVar *cvar, char *out, size_t outSize);
+// Applies every "--set <name>=<value>" argument over the loaded settings. They are saved
+// like any other change if the menu later saves. Returns 0 if one is invalid.
+int NativeSettings_ApplyOverrides(int argc, char **argv);
 
 void NativeSettings_SetDefaults(struct NativeSettings *settings);
 void NativeSettings_SetInputDefaults(struct NativeInputSettings *input);
