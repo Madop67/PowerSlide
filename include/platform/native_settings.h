@@ -166,6 +166,17 @@ struct NativeGameSettings
 	int unlimitedTurbo;
 	// Retail's wumpa cheat: start each race with full wumpa that never drops.
 	int unlimitedWumpa;
+	// The rest of retail's cheat codes, as toggles (see native_tweaks.h).
+	int unlimitedMasks;
+	int unlimitedBombs;
+	int superEngine;
+	int permanentInvisibility;
+	int icyTracks;
+	int superTurboPads;
+	int oneLapRace;
+	int superHard;
+	int adventureDifficulty;
+	int turboCounter;
 };
 
 struct NativeGlobalSettings
