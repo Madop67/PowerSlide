@@ -2,6 +2,8 @@
 
 #ifdef CTR_NATIVE
 #include <platform/native_gpu.h>
+#include <platform/native_renderer.h>
+#include <platform/native_settings.h>
 #endif
 
 enum ElimBGPauseState
@@ -47,6 +49,81 @@ enum ElimBGConstants
 	ELIM_BG_U_LIMIT = 0x100,
 	ELIM_BG_VRAM_U_WRAP = 0x80,
 };
+
+#ifdef CTR_NATIVE
+enum ElimBGNativeConstants
+{
+	ELIM_BG_PSYX_TEX_CODE = 0xb1,
+	ELIM_BG_PSYX_TEX_LEN = 2,
+	// The capture is addressed in quarter screen pixels across and half pixels down,
+	// so the whole screen fits the 8-bit u/v of a POLY_FT4.
+	ELIM_BG_FULL_COLOR_U_SHIFT = 2,
+	ELIM_BG_FULL_COLOR_V_SHIFT = 1,
+};
+
+static void ElimBG_SetPsyXTexture(DR_PSYX_TEX *p, u32 texture, int width, int height)
+{
+	setlen(p, ELIM_BG_PSYX_TEX_LEN);
+	p->code[0] = ((u32)ELIM_BG_PSYX_TEX_CODE << 24) | (texture & 0xffffff);
+	p->code[1] = ((u32)(height & 0xfff) << 16) | (u32)(width & 0xfff);
+}
+
+// NOTE: ctr-native divergence. Draws the pause background from the full-colour
+// capture of the paused frame (NativeRenderer_CapturePauseBackground) instead of
+// retail's 4-bit sepia VRAM screenshot. Same tiles and OT slot as retail; a Psy-X
+// texture packet points them at the capture and a second one switches back.
+static int ElimBG_DrawFullColor(struct GameTracker *gGT)
+{
+	DR_PSYX_TEX *resetTex;
+	DR_PSYX_TEX *setTex;
+	POLY_FT4 *p;
+	TextureID texture;
+	int x0, y0, x1, y1;
+
+	if (!g_settings.video.pauseFullColor)
+	{
+		return 0;
+	}
+
+	texture = NativeRenderer_GetPauseBackgroundTexture();
+	if (texture == 0)
+	{
+		return 0;
+	}
+
+	// AddPrim prepends, so the reset packet is added first to be drawn last.
+	resetTex = (DR_PSYX_TEX *)gGT->backBuffer->primMem.cursor;
+	ElimBG_SetPsyXTexture(resetTex, 0, 0, 0);
+	AddPrim(&gGT->pushBuffer_UI.ptrOT[4], resetTex);
+
+	p = (POLY_FT4 *)(resetTex + 1);
+	for (x0 = 0; x0 < ELIM_BG_SCREEN_W; x0 += ELIM_BG_TILE_W)
+	{
+		x1 = x0 + ELIM_BG_TILE_W;
+		for (y0 = 0; y0 < ELIM_BG_SCREEN_H; y0 += ELIM_BG_TILE_H)
+		{
+			y1 = (y0 + ELIM_BG_TILE_H < ELIM_BG_SCREEN_H) ? (y0 + ELIM_BG_TILE_H) : ELIM_BG_SCREEN_H;
+
+			setPolyFT4(p);
+			setRGB0(p, ELIM_BG_TILE_COLOR, ELIM_BG_TILE_COLOR, ELIM_BG_TILE_COLOR);
+			setXY4(p, x0, y0, x1, y0, x0, y1, x1, y1);
+			setUV4(p, x0 >> ELIM_BG_FULL_COLOR_U_SHIFT, y0 >> ELIM_BG_FULL_COLOR_V_SHIFT, x1 >> ELIM_BG_FULL_COLOR_U_SHIFT, y0 >> ELIM_BG_FULL_COLOR_V_SHIFT,
+			       x0 >> ELIM_BG_FULL_COLOR_U_SHIFT, y1 >> ELIM_BG_FULL_COLOR_V_SHIFT, x1 >> ELIM_BG_FULL_COLOR_U_SHIFT, y1 >> ELIM_BG_FULL_COLOR_V_SHIFT);
+			p->tpage = (u16)getTPage(TEXPAGE_COLOR_4BIT, TRANS_50, ELIM_BG_TEXTURE_LEFT_X, 0);
+			p->clut = ELIM_BG_TILE_CLUT;
+			AddPrim(&gGT->pushBuffer_UI.ptrOT[4], p);
+			p++;
+		}
+	}
+
+	setTex = (DR_PSYX_TEX *)p;
+	ElimBG_SetPsyXTexture(setTex, (u32)texture, ELIM_BG_SCREEN_W >> ELIM_BG_FULL_COLOR_U_SHIFT, ELIM_BG_SCREEN_H >> ELIM_BG_FULL_COLOR_V_SHIFT);
+	AddPrim(&gGT->pushBuffer_UI.ptrOT[4], setTex);
+
+	gGT->backBuffer->primMem.cursor = setTex + 1;
+	return 1;
+}
+#endif
 
 
 void ElimBG_SaveScreenshot_Chunk(u16 *packedStrip, u16 *rawStrip, int rawPixelCount)
@@ -312,6 +389,10 @@ void ElimBG_HandleState(struct GameTracker *gGT)
 			gGT->hudFlags &= HUD_FLAG_PAUSE_SCREENSHOT_MASK;
 
 			ElimBG_SaveScreenshot_Full(gGT);
+#ifdef CTR_NATIVE
+			// Captured whatever the setting, so it can be toggled while paused.
+			NativeRenderer_CapturePauseBackground();
+#endif
 
 			// Disable all instances
 			// (prevent PrimMem from overwriting VRAM backup)
@@ -323,6 +404,11 @@ void ElimBG_HandleState(struct GameTracker *gGT)
 		// rest of the function is for drawing screenshot
 #ifdef CTR_NATIVE
 		void *tilesStart = gGT->backBuffer->primMem.cursor;
+		if (ElimBG_DrawFullColor(gGT))
+		{
+			NativeGpu_AddFullFrameRange(tilesStart, gGT->backBuffer->primMem.cursor);
+			return;
+		}
 #endif
 		tileX = 0;
 		do

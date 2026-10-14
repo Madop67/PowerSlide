@@ -15,6 +15,10 @@ void NativeRenderer_FinishGpuMeasurements(void);
 void NativeRenderer_UpdateSwapIntervalState(int swapInterval);
 void NativeRenderer_SwapWindow(void);
 void NativeRenderer_StoreFrameBuffer(int x, int y, int w, int h);
+// Copies the last drawn frame for the pause background. Returns 0 if there is none.
+int NativeRenderer_CapturePauseBackground(void);
+// The pause background capture, or 0 if there is no valid one.
+TextureID NativeRenderer_GetPauseBackgroundTexture(void);
 void NativeRenderer_PresentVRAMDisplay(void);
 void NativeRenderer_PresentVRAMRect(int x, int y, int w, int h);
 void NativeRenderer_PresentFrame(int x, int y, int w, int h);

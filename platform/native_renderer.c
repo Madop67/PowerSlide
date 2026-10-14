@@ -115,6 +115,11 @@ global_variable struct NativeRenderTarget s_offscreenRenderTarget;
 // RGBA copy of the displayed VRAM region, used only for smooth (linear) presentation scaling.
 global_variable struct NativeRenderTarget s_presentRenderTarget;
 global_variable b32 s_presentRenderTargetReady;
+// Full-colour copy of the frame shown when the game was paused (top row first), drawn
+// as the pause background instead of retail's 4-bit sepia VRAM screenshot.
+global_variable struct NativeRenderTarget s_pauseRenderTarget;
+global_variable b32 s_pauseRenderTargetReady;
+global_variable b32 s_pauseCaptureValid;
 
 // Internal resolution: the main render target is the display size times this
 // factor (whole or fractional), latched once per frame in BeginScene. Offscreen
@@ -304,6 +309,12 @@ void NativeRenderer_Shutdown(void)
 	{
 		NativeRenderer_DestroyRenderTarget(&s_presentRenderTarget);
 		s_presentRenderTargetReady = false;
+	}
+	if (s_pauseRenderTargetReady)
+	{
+		NativeRenderer_DestroyRenderTarget(&s_pauseRenderTarget);
+		s_pauseRenderTargetReady = false;
+		s_pauseCaptureValid = false;
 	}
 	glDeleteFramebuffers(1, &s_glVramFramebuffer);
 
@@ -931,7 +942,9 @@ const char *gte_shader_32_rgba = "	uniform sampler2D s_texture;\n"
                                  "	uniform int psxDrawMaskSet;\n"
                                  "	uniform vec2 texelSize;\n"
                                  "	void main() {\n"
-                                 "		vec2 tc = v_texcoord.xy * texelSize + texelSize * 0.5;\n"
+                                 // UVs are edge coordinates (0..size) so a quad maps exactly onto
+                                 // its texture; the pause background stretches the captured frame.
+                                 "		vec2 tc = v_texcoord.xy * texelSize;\n"
                                  "		vec4 color = texture2D(s_texture, tc);\n"
                                  "		fragColor = dither(color * v_color);\n"
                                  "		fragColor.a = float(psxDrawMaskSet);\n"
@@ -2079,6 +2092,59 @@ void NativeRenderer_StoreFrameBuffer(int x, int y, int w, int h)
 	NativePerf_EndScope(NATIVE_PERF_BUCKET_FRAMEBUFFER_STORE);
 }
 
+// The main render target still holds the last frame drawn (game code runs before the
+// next DrawOTag), at the internal resolution and in full colour.
+int NativeRenderer_CapturePauseBackground(void)
+{
+	s_pauseCaptureValid = false;
+	if ((s_mainRenderTarget.width <= 0) || (s_mainRenderTarget.height <= 0))
+	{
+		return 0;
+	}
+
+	if (!s_pauseRenderTargetReady)
+	{
+		NativeRenderer_InitRenderTarget(&s_pauseRenderTarget);
+		// Linear, so the picture stays smooth if the internal resolution changes while paused.
+		glBindTexture(GL_TEXTURE_2D, s_pauseRenderTarget.texture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		s_lastBoundTexture = (TextureID)-1;
+		s_pauseRenderTargetReady = true;
+	}
+	NativeRenderer_EnsureRenderTarget(&s_pauseRenderTarget, s_mainRenderTarget.width, s_mainRenderTarget.height);
+
+	GLint previousReadFramebuffer;
+	GLint previousDrawFramebuffer;
+	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFramebuffer);
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDrawFramebuffer);
+	const GLboolean previousScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
+	glDisable(GL_SCISSOR_TEST);
+
+	// The main target is bottom-up (row 0 is the bottom of the screen); flip it so
+	// texture v grows down the screen like PS1 texture coordinates.
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, s_mainRenderTarget.framebuffer);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, s_pauseRenderTarget.framebuffer);
+	glBlitFramebuffer(0, 0, s_mainRenderTarget.width, s_mainRenderTarget.height, 0, s_pauseRenderTarget.height, s_pauseRenderTarget.width, 0,
+	                  GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)previousReadFramebuffer);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)previousDrawFramebuffer);
+	if (previousScissorEnabled)
+	{
+		glEnable(GL_SCISSOR_TEST);
+	}
+
+	s_pauseCaptureValid = true;
+	return 1;
+}
+
+TextureID NativeRenderer_GetPauseBackgroundTexture(void)
+{
+	return s_pauseCaptureValid ? s_pauseRenderTarget.texture : 0;
+}
+
 void NativeRenderer_CopyVRAM(u16 *src, int x, int y, int w, int h, int dst_x, int dst_y)
 {
 	int stride = w;
@@ -2162,6 +2228,9 @@ int NativeRenderer_RestoreVRAMState(const void *src, int srcSize)
 	s_previousOffscreenState = 0;
 	s_previousShader = (ShaderID)-1;
 	s_lastBoundTexture = (TextureID)-1;
+	// A pause capture belongs to the frame it was taken from; a restored state paused
+	// elsewhere falls back to its VRAM screenshot.
+	s_pauseCaptureValid = false;
 	return 1;
 }
 
