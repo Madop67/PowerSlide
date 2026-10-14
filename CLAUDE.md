@@ -12,6 +12,9 @@ PowerSlide is a feature-rich native PC port of Crash Team Racing (PS1, NTSC-U), 
 - **Keep the matching build byte-identical.**
   - Changes to `game/` go inside `#ifdef CTR_NATIVE` (or `#if defined(CTR_NATIVE)`), so the PS1 matching build never sees them.
   - Run `./match.sh check` after touching `game/`. It must report `175/175 configured targets matched`.
+- **Keep vanilla vanilla: run the replay suite.** After any change to game code, timing, input or rendering, run `python3 tools/replays/replay_suite.py run` (also the `ctr_replay_suite` ctest). It plays power-on replays from `debug/replay-suite/` with default settings and fails on any divergence. Add `-- --set <cvar>=<value>` to check that an enhancement leaves game logic alone. See `docs/REPLAYS.md`.
+- **Hooks, not calls.** An enhancement subscribes to a hook in `include/platform/native_hooks.h` from its own file (register it in `NativeHooks_RegisterModules`). Add a new hook to the `NATIVE_HOOKS` list when no existing one fits; game code calls `NATIVE_HOOK(Name, ...)` inside `#if defined(CTR_NATIVE)`.
+- **Settings are CVars.** A new setting is a field in `struct NativeSettings` plus one row in `s_fixedDescs` (`platform/native_settings.c`); that gives it a `ctr-native.toml` key and `--set <section>.<key>=<value>`. Defaults equal retail.
 - **Branding is user-facing only.** The name comes from `include/platform/native_product.h`. Code, file and target names (`ctr_native.exe`, `[CTR Native]` log prefixes, the log file name) keep the upstream naming so merges stay cheap.
 - **Keep the macOS build working, even when you can't test it.** macOS runs the game as a wasm32 sandbox (see Environment), so every platform change also has to work there. When you can't build on a Mac, still write the macOS side:
   - New GL call: rerun `python3 tools/macos/gen_wasm_gl_bridge.py` and commit the regenerated `guest_gl.h` and `host_gl.gen.c`. Pointer-to-pointer arguments and pointer returns need a hand-written shim; buffer-offset "pointers" go in `OFFSET_POINTER_ARGS`.
@@ -21,7 +24,7 @@ PowerSlide is a feature-rich native PC port of Crash Team Racing (PS1, NTSC-U), 
   - No threads, `fork`/`exec`, `dlopen` or host-pointer-sized assumptions in guest code. Guest pointers are 32-bit.
   - Say in the commit or PR when the macOS side is untested.
 - **Ship no game data.** `assets/` (the user's `ctr-u.bin` and extracted files) is git-ignored. Never commit Sony or Naughty Dog material, including the PlayStation logo.
-- **Commits:** branch first (no direct work on `master`), use conventional-commit style subjects (`feat(video): ...`), and add the `Co-Authored-By` trailer.
+- **Commits:** branch first (no direct work on `master`), use conventional-commit style subjects (`feat(video): ...`), and add the `Co-Authored-By` trailer. The Windows checkout has no git identity configured; commit with `git -c user.name=Madop67 -c user.email=madop67@gmail.com commit ...`.
 
 ## Environment
 
@@ -65,6 +68,12 @@ PowerSlide is a feature-rich native PC port of Crash Team Racing (PS1, NTSC-U), 
 | Input | Input tab: rebind every PS1 button (2 keys and 1 controller input each; click, then press; Esc cancels, Backspace clears); keyboard player; per-player controller assignment; stick deadzone; analog press point; rumble on/off and strength. Saved under `[input]` by key and controller names. The Home/PS button or L3+R3 opens the menu. Bindings are table-driven; defaults equal the old hard-coded layout | `platform/native_input.c`, `platform/native_ui.cpp`, `include/platform/native_input_config.h` |
 | Input | Per-player input: each player has its own keys (one keyboard can drive several players), controller layout, deadzone, press point and rumble, saved under `[input.player1]`..`[input.player4]`. An old shared `[input]` section is converted on load. Controllers are remembered per player by USB vendor:product id and rejoin that player on reconnect. The menu no longer freezes everyone's input: it holds back only the device that opened it (keyboard, or that one controller, which alone navigates it) | `platform/native_input.c`, `platform/native_settings.c`, `platform/native_ui.cpp` |
 | Build | macOS Apple Silicon build via a wasm32 sandbox (wasi-sdk → wasm2c → native arm64), including the ImGui settings menu | `cmake/ctr_wasm_sandbox.cmake`, `platform/wasm/`, `platform/wasm_host/`, `tools/macos/` |
+| Testing | Power-on replays (`--record --from-boot`): no checkpoint, boot VBlanks in a prelude block, so any build and platform can play them. `--record-frames`, `--replay-check` (exit 3 = diverged), `--replay-turbo` (~30× speed), `--input-script` (scripted pad 1), `--screenshot-every`. Frame checks include a driver-state hash (replay format v2). Suite tool and ctest `ctr_replay_suite`; standard suite = attract mode (boot, intro, 2 demo races), Crash Cove time trial, Crash Cove arcade race (~10 min of play, ~20 s to check) | `platform/native_replay_scheduler.c`, `tools/replays/`, `docs/REPLAYS.md` |
+| Settings | CVar registry: every setting is `<section>.<key>`; `NativeCVar_Find/SetFromText/Format`. `--set name=value` (repeatable) and `--vanilla` (defaults, never saves) | `platform/native_settings.c` |
+| Hooks | Hook bus: X-macro list of typed hooks (`Boot`, `TitleIntro`, `BeforeDraw`, `AfterPresent`); frame interpolation runs on it | `include/platform/native_hooks.h`, `platform/native_hooks.c` |
+| QoL | Fast boot (`game.fast_boot`, Game tab): `title` skips SCEA, copyright and the crate; `menu` also skips the title animation (menu in ~1 s instead of ~40). Off while recording or replaying | `platform/native_fast_boot.c`, `game/MAIN/MainMain.c`, `game/LOAD/LOAD_TenStages.c`, `game/230/MM_MenuFlow.c` |
+| Fix | Widescreen crash in the attract intro: four 1P clip-record writers overran the clip buffer into level data; they now check space like the others | `game/226/226_00_DrawLevelOvr1P.c` |
+| Fix | Linux builds use 64-bit file offsets (32-bit `stat()` failed on XFS/btrfs/WSL `/mnt/c`) | `CMakeLists.txt` |
 
 The debug wireframe toggle moved from F1 to Shift+F1. F2–F12 keep their upstream debug uses.
 
@@ -79,12 +88,12 @@ Merging `feature/macos-port` with the settings, video and input work left macOS 
 
 ## Next tasks (in order)
 
-1. **Input configuration menu: done** (branches `feature/input-config`, `feature/input-per-player`). The game deliberately keeps running while the menu is open. Two identical controllers share an id, so they fill remembered players in connection order.
-2. **60 fps by interpolation.** The user chose this over porting ModSDK's `USE_60FPS`.
-   - Game logic stays at 30 Hz (`vsyncTillFlip = 2`), so physics, ghosts and records stay retail.
-   - Render extra frames by blending camera and instance transforms between the last two logic ticks, as Ship of Harkinian does.
-   - Must not change replays or ghost determinism.
-   - Should allow refresh rates above 60.
+Phase 1 (hook bus, CVars and settings file, ImGui menu, render scale, rebinding, fast boot; gate: vanilla passes every replay) is done. The suite also passes with widescreen (16:9, 21:9), 60 fps and 2× render scale. Phase 2 next:
+
+1. **Phase 2 gate in CI terms:** run the suite with `-- --set video.frame_rate=60` (and 120/144) before merging any interpolation change.
+2. **Widescreen clip buffer:** in very wide views the 1P renderer now drops near-plane polygons once its clip buffer is full instead of corrupting memory. Check for holes near the camera at 21:9+; if any, allocate a larger clip buffer when widescreen is on (`MainDB_GetClipSize`, mind the mempack budget).
+3. **More suite coverage:** a scripted lap with drifting and boosts, a 2-player split-screen race, adventure hub, battle. Scripts live in `tools/replays/scripts/`; `record_suite.ps1` records them.
+4. Remaining P1 features from the plan doc: presets, analog tuning, mixer, quick restart, extra HUD, save management, bug-fix toggles, cheats and developer tools.
 
 ## Later ideas
 

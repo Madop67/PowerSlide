@@ -159,6 +159,11 @@ target_compile_definitions(ctr_native PRIVATE
     CTR_NATIVE_VERSION=\"${CTR_NATIVE_VERSION}\"
     CTR_NATIVE_BUILD_ID=\"${CTR_NATIVE_BUILD_ID}\"
 )
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # 32-bit stat() fails with EOVERFLOW on filesystems with 64-bit inode numbers
+    # (XFS, btrfs, WSL's /mnt/c), so replay files and folders look missing there.
+    target_compile_definitions(ctr_native PRIVATE _FILE_OFFSET_BITS=64)
+endif()
 if(CTR_NATIVE_MSVC_FRONTEND)
     target_compile_options(ctr_native PRIVATE
         /W4 #TODO(aalhendi): fix warnings
