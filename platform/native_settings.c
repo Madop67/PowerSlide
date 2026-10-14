@@ -14,6 +14,7 @@
 // NOTE: ctr-native.toml uses a small TOML subset: [section] headers and
 // key = value lines holding integers, true/false, or "quoted names".
 #define NATIVE_SETTINGS_FILE_NAME "ctr-native.toml"
+#define NATIVE_PRESETS_FILE_NAME  "ctr-native-presets.toml"
 #define NATIVE_SETTINGS_LINE_MAX  256
 #define NATIVE_SETTINGS_DESC_MAX  320
 #define NATIVE_SETTINGS_KEY_MAX   40
@@ -22,6 +23,21 @@
 struct NativeSettings g_settings;
 
 global_variable char s_settingsPath[1024];
+global_variable char s_presetsPath[1024];
+
+// The chosen preset settings while PS1 mode runs retail values in g_settings.
+global_variable struct NativeSettings s_chosenSettings;
+global_variable int s_ps1ModeApplied;
+
+struct NativePreset
+{
+	char name[NATIVE_PRESET_NAME_MAX];
+	struct NativeSettings settings;
+};
+
+global_variable struct NativePreset s_customPresets[NATIVE_PRESET_CUSTOM_MAX];
+global_variable int s_customPresetCount;
+global_variable const char *const s_builtinPresetNames[NATIVE_PRESET_BUILTIN_COUNT] = {"Vanilla", "Enhanced"};
 
 global_variable const char *const s_displayModeNames[NATIVE_DISPLAY_COUNT] = {"windowed", "fullscreen"};
 global_variable const char *const s_aspectModeNames[NATIVE_ASPECT_COUNT] = {"original", "widescreen", "ultrawide", "custom", "stretch"};
@@ -37,32 +53,41 @@ global_variable const char *const s_padButtonKeys[NATIVE_PAD_BUTTON_COUNT] = {
 	"dpad_up", "dpad_down", "dpad_left", "dpad_right", "start", "select", "l3", "r3",
 };
 
+#define NATIVE_GLOBAL_OFFSET(field) offsetof(struct NativeSettings, global.field)
 #define NATIVE_GAME_OFFSET(field)  offsetof(struct NativeSettings, game.field)
 #define NATIVE_VIDEO_OFFSET(field) offsetof(struct NativeSettings, video.field)
 #define NATIVE_PLAYER_OFFSET(player, field)                                                                                 \
 	(offsetof(struct NativeSettings, input.players) + ((size_t)(player) * sizeof(struct NativePlayerInputSettings)) + \
 	 offsetof(struct NativePlayerInputSettings, field))
 
+#define P NATIVE_CVAR_FLAG_PRESET
+
 global_variable const struct NativeCVar s_fixedDescs[] = {
-	{"game", "fast_boot", NATIVE_CVAR_ENUM, NATIVE_GAME_OFFSET(fastBoot), 0, NATIVE_FAST_BOOT_COUNT - 1, s_fastBootNames},
-	{"video", "display_mode", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(displayMode), 0, NATIVE_DISPLAY_COUNT - 1, s_displayModeNames},
-	{"video", "window_width", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowWidth), 0, 16384, NULL},
-	{"video", "window_height", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowHeight), 0, 16384, NULL},
-	{"video", "aspect_ratio", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(aspectMode), 0, NATIVE_ASPECT_COUNT - 1, s_aspectModeNames},
-	{"video", "aspect_custom_width", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(aspectCustomWidth), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL},
-	{"video", "aspect_custom_height", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(aspectCustomHeight), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL},
-	{"video", "hud_position", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(hudPosition), 0, NATIVE_HUD_POSITION_COUNT - 1, s_hudPositionNames},
-	{"video", "render_scale", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(renderScale), 1, NATIVE_RENDER_SCALE_MAX, NULL},
-	{"video", "render_scale_custom", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(renderScaleCustom), 0, 1, NULL},
-	{"video", "render_scale_percent", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(renderScalePercent), NATIVE_RENDER_SCALE_PERCENT_MIN, NATIVE_RENDER_SCALE_PERCENT_MAX, NULL},
-	{"video", "integer_scaling", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(integerScaling), 0, 1, NULL},
-	{"video", "scale_filter", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(scaleFilter), 0, NATIVE_SCALE_FILTER_COUNT - 1, s_scaleFilterNames},
-	{"video", "texture_filtering", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(textureFiltering), 0, 1, NULL},
-	{"video", "pause_full_color", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(pauseFullColor), 0, 1, NULL},
-	{"video", "frame_rate", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(frameRate), NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX, NULL},
-	{"video", "frame_rate_match_display", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(frameRateMatchDisplay), 0, 1, NULL},
-	{"video", "show_fps", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(showFps), 0, 1, NULL},
+	{"global", "ps1_mode", NATIVE_CVAR_BOOL, NATIVE_GLOBAL_OFFSET(ps1Mode), 0, 1, NULL, 0},
+	{"game", "fast_boot", NATIVE_CVAR_ENUM, NATIVE_GAME_OFFSET(fastBoot), 0, NATIVE_FAST_BOOT_COUNT - 1, s_fastBootNames, P},
+	{"game", "unlock_all_characters", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(unlockAllCharacters), 0, 1, NULL, P},
+	{"game", "unlimited_turbo", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(unlimitedTurbo), 0, 1, NULL, P},
+	{"game", "unlimited_wumpa", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(unlimitedWumpa), 0, 1, NULL, P},
+	{"video", "display_mode", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(displayMode), 0, NATIVE_DISPLAY_COUNT - 1, s_displayModeNames, 0},
+	{"video", "window_width", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowWidth), 0, 16384, NULL, 0},
+	{"video", "window_height", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowHeight), 0, 16384, NULL, 0},
+	{"video", "aspect_ratio", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(aspectMode), 0, NATIVE_ASPECT_COUNT - 1, s_aspectModeNames, P},
+	{"video", "aspect_custom_width", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(aspectCustomWidth), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL, P},
+	{"video", "aspect_custom_height", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(aspectCustomHeight), 1, NATIVE_ASPECT_CUSTOM_MAX_TERM, NULL, P},
+	{"video", "hud_position", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(hudPosition), 0, NATIVE_HUD_POSITION_COUNT - 1, s_hudPositionNames, P},
+	{"video", "render_scale", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(renderScale), 1, NATIVE_RENDER_SCALE_MAX, NULL, P},
+	{"video", "render_scale_custom", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(renderScaleCustom), 0, 1, NULL, P},
+	{"video", "render_scale_percent", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(renderScalePercent), NATIVE_RENDER_SCALE_PERCENT_MIN, NATIVE_RENDER_SCALE_PERCENT_MAX, NULL, P},
+	{"video", "integer_scaling", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(integerScaling), 0, 1, NULL, P},
+	{"video", "scale_filter", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(scaleFilter), 0, NATIVE_SCALE_FILTER_COUNT - 1, s_scaleFilterNames, P},
+	{"video", "texture_filtering", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(textureFiltering), 0, 1, NULL, P},
+	{"video", "pause_full_color", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(pauseFullColor), 0, 1, NULL, P},
+	{"video", "frame_rate", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(frameRate), NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX, NULL, P},
+	{"video", "frame_rate_match_display", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(frameRateMatchDisplay), 0, 1, NULL, P},
+	{"video", "show_fps", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(showFps), 0, 1, NULL, 0},
 };
+
+#undef P
 
 // Fixed settings plus the per-player input settings generated by NativeSettings_RegisterDescs.
 global_variable struct NativeCVar s_settingDescs[NATIVE_SETTINGS_DESC_MAX];
@@ -84,6 +109,7 @@ internal void NativeSettings_AddGenerated(int player, const char *key, enum Nati
 	desc->minValue = minValue;
 	desc->maxValue = maxValue;
 	desc->names = NULL;
+	desc->flags = 0;
 }
 
 internal void NativeSettings_RegisterDescs(void)
@@ -205,6 +231,45 @@ void NativeSettings_SetDefaults(struct NativeSettings *settings)
 	settings->video.scaleFilter = NATIVE_SCALE_FILTER_SHARP;
 	settings->video.pauseFullColor = 1;
 	NativeSettings_SetInputDefaults(&settings->input);
+}
+
+// Copies the preset settings from one settings block to another.
+internal void NativeSettings_CopyPresetFields(struct NativeSettings *to, const struct NativeSettings *from)
+{
+	NativeSettings_RegisterDescs();
+	for (int i = 0; i < s_settingCount; i++)
+	{
+		const struct NativeCVar *desc = &s_settingDescs[i];
+		if ((desc->flags & NATIVE_CVAR_FLAG_PRESET) != 0)
+		{
+			// Preset settings are all ints.
+			*(int *)((char *)to + desc->offset) = *(const int *)((const char *)from + desc->offset);
+		}
+	}
+}
+
+void NativeSettings_SetRetail(struct NativeSettings *settings)
+{
+	struct NativeSettings retail;
+	NativeSettings_SetDefaults(&retail);
+	// The default keeps the full-colour pause screen; retail shows the sepia screenshot.
+	retail.video.pauseFullColor = 0;
+	NativeSettings_CopyPresetFields(settings, &retail);
+}
+
+void NativeSettings_RefreshPs1Mode(void)
+{
+	if (g_settings.global.ps1Mode && !s_ps1ModeApplied)
+	{
+		NativeSettings_CopyPresetFields(&s_chosenSettings, &g_settings);
+		NativeSettings_SetRetail(&g_settings);
+		s_ps1ModeApplied = 1;
+	}
+	else if (!g_settings.global.ps1Mode && s_ps1ModeApplied)
+	{
+		NativeSettings_CopyPresetFields(&g_settings, &s_chosenSettings);
+		s_ps1ModeApplied = 0;
+	}
 }
 
 internal char *NativeSettings_Trim(char *text)
@@ -391,7 +456,7 @@ const struct NativeCVar *NativeCVar_Find(const char *name)
 	return NativeSettings_Find(section, dot + 1);
 }
 
-int NativeCVar_SetFromText(const struct NativeCVar *cvar, const char *text)
+internal int NativeSettings_SetFromText(struct NativeSettings *settings, const struct NativeCVar *cvar, const char *text)
 {
 	char quoted[NATIVE_CVAR_TEXT_MAX];
 	int value;
@@ -417,7 +482,7 @@ int NativeCVar_SetFromText(const struct NativeCVar *cvar, const char *text)
 		{
 			return 0;
 		}
-		memcpy(NativeSettings_TextField(&g_settings, cvar), unquoted, strlen(unquoted) + 1);
+		memcpy(NativeSettings_TextField(settings, cvar), unquoted, strlen(unquoted) + 1);
 		return 1;
 	}
 
@@ -425,21 +490,26 @@ int NativeCVar_SetFromText(const struct NativeCVar *cvar, const char *text)
 	{
 		return 0;
 	}
-	*NativeSettings_Field(&g_settings, cvar) = value;
+	*NativeSettings_Field(settings, cvar) = value;
 	return 1;
 }
 
-void NativeCVar_Format(const struct NativeCVar *cvar, char *out, size_t outSize)
+int NativeCVar_SetFromText(const struct NativeCVar *cvar, const char *text)
+{
+	return NativeSettings_SetFromText(&g_settings, cvar, text);
+}
+
+internal void NativeSettings_Format(const struct NativeSettings *settings, const struct NativeCVar *cvar, char *out, size_t outSize)
 {
 	char text[64];
 
 	if (cvar->type == NATIVE_CVAR_STRING)
 	{
-		snprintf(out, outSize, "\"%s\"", NativeSettings_TextField(&g_settings, cvar));
+		snprintf(out, outSize, "\"%s\"", NativeSettings_TextField((struct NativeSettings *)settings, cvar));
 		return;
 	}
 
-	const int value = *NativeSettings_Field(&g_settings, cvar);
+	const int value = *NativeSettings_Field((struct NativeSettings *)settings, cvar);
 	switch (cvar->type)
 	{
 	case NATIVE_CVAR_BOOL:
@@ -462,6 +532,11 @@ void NativeCVar_Format(const struct NativeCVar *cvar, char *out, size_t outSize)
 		snprintf(out, outSize, "%d", value);
 		break;
 	}
+}
+
+void NativeCVar_Format(const struct NativeCVar *cvar, char *out, size_t outSize)
+{
+	NativeSettings_Format(&g_settings, cvar, out, outSize);
 }
 
 int NativeSettings_ApplyOverrides(int argc, char **argv)
@@ -506,6 +581,7 @@ int NativeSettings_ApplyOverrides(int argc, char **argv)
 		}
 		Platform_Log("[CTR Native] Settings: %s = %s (from --set)\n", name, equals + 1);
 	}
+	NativeSettings_RefreshPs1Mode();
 	return 1;
 }
 
@@ -533,16 +609,21 @@ internal void NativeSettings_MigrateLegacyInput(int keyboardPlayer)
 	Platform_Log("[CTR Native] Settings: converted the shared [input] layout to per-player settings\n");
 }
 
+internal void NativePreset_LoadFile(void);
+
 int NativeSettings_Load(const char *baseDir)
 {
 	NativeSettings_RegisterDescs();
 	NativeSettings_SetDefaults(&g_settings);
+	s_ps1ModeApplied = 0;
 
 	if ((baseDir == NULL) || (baseDir[0] == '\0'))
 	{
 		baseDir = ".";
 	}
 	snprintf(s_settingsPath, sizeof(s_settingsPath), "%s/%s", baseDir, NATIVE_SETTINGS_FILE_NAME);
+	snprintf(s_presetsPath, sizeof(s_presetsPath), "%s/%s", baseDir, NATIVE_PRESETS_FILE_NAME);
+	NativePreset_LoadFile();
 
 	FILE *file = fopen(s_settingsPath, "r");
 	if (file == NULL)
@@ -652,6 +733,7 @@ int NativeSettings_Load(const char *baseDir)
 	{
 		NativeSettings_MigrateLegacyInput(legacyKeyboardPlayer);
 	}
+	NativeSettings_RefreshPs1Mode();
 	Platform_Log("[CTR Native] Settings: loaded %s\n", s_settingsPath);
 	return 1;
 }
@@ -660,7 +742,10 @@ void NativeSettings_LoadVanilla(void)
 {
 	NativeSettings_RegisterDescs();
 	NativeSettings_SetDefaults(&g_settings);
+	s_ps1ModeApplied = 0;
 	s_settingsPath[0] = '\0';
+	s_presetsPath[0] = '\0';
+	s_customPresetCount = 0;
 	Platform_Log("[CTR Native] Settings: --vanilla, using defaults; changes are not saved\n");
 }
 
@@ -692,7 +777,9 @@ int NativeSettings_Save(void)
 			fprintf(file, "\n[%s]\n", section);
 		}
 
-		NativeCVar_Format(desc, text, sizeof(text));
+		// PS1 mode only runs retail values; the file keeps the chosen ones.
+		const int chosen = s_ps1ModeApplied && ((desc->flags & NATIVE_CVAR_FLAG_PRESET) != 0);
+		NativeSettings_Format(chosen ? &s_chosenSettings : &g_settings, desc, text, sizeof(text));
 		fprintf(file, "%s = %s\n", desc->key, text);
 	}
 
@@ -703,4 +790,286 @@ int NativeSettings_Save(void)
 const char *NativeSettings_GetPath(void)
 {
 	return s_settingsPath;
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+// Presets
+
+// Built-in presets are the retail values, plus Enhanced's changes.
+internal void NativePreset_BuiltinSettings(int index, struct NativeSettings *settings)
+{
+	NativeSettings_SetDefaults(settings);
+	NativeSettings_SetRetail(settings);
+	if (index != NATIVE_PRESET_ENHANCED)
+	{
+		return;
+	}
+
+	settings->game.fastBoot = NATIVE_FAST_BOOT_TITLE;
+	settings->video.aspectMode = NATIVE_ASPECT_WIDESCREEN;
+	settings->video.hudPosition = NATIVE_HUD_POSITION_EDGES;
+	settings->video.renderScale = 4;
+	settings->video.scaleFilter = NATIVE_SCALE_FILTER_SMOOTH;
+	settings->video.pauseFullColor = 1;
+	settings->video.frameRate = 60;
+	settings->video.frameRateMatchDisplay = 1;
+}
+
+internal int NativePreset_PresetFieldsEqual(const struct NativeSettings *a, const struct NativeSettings *b)
+{
+	NativeSettings_RegisterDescs();
+	for (int i = 0; i < s_settingCount; i++)
+	{
+		const struct NativeCVar *desc = &s_settingDescs[i];
+		if (((desc->flags & NATIVE_CVAR_FLAG_PRESET) != 0) &&
+		    (*(const int *)((const char *)a + desc->offset) != *(const int *)((const char *)b + desc->offset)))
+		{
+			return 0;
+		}
+	}
+	return 1;
+}
+
+// Preset names compare without case (ASCII; isn't an SDL call, so the wasm guest needs no import).
+internal int NativePreset_NameCompare(const char *a, const char *b)
+{
+	while ((*a != '\0') && (tolower((unsigned char)*a) == tolower((unsigned char)*b)))
+	{
+		a++;
+		b++;
+	}
+	return tolower((unsigned char)*a) - tolower((unsigned char)*b);
+}
+
+int NativePreset_Count(void)
+{
+	return NATIVE_PRESET_BUILTIN_COUNT + s_customPresetCount;
+}
+
+const char *NativePreset_Name(int index)
+{
+	if ((index >= 0) && (index < NATIVE_PRESET_BUILTIN_COUNT))
+	{
+		return s_builtinPresetNames[index];
+	}
+	index -= NATIVE_PRESET_BUILTIN_COUNT;
+	return ((index >= 0) && (index < s_customPresetCount)) ? s_customPresets[index].name : "";
+}
+
+int NativePreset_IsCustom(int index)
+{
+	return (index >= NATIVE_PRESET_BUILTIN_COUNT) && (index < NativePreset_Count());
+}
+
+int NativePreset_Find(const char *name)
+{
+	for (int i = 0; i < NativePreset_Count(); i++)
+	{
+		if (NativePreset_NameCompare(NativePreset_Name(i), name) == 0)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+internal void NativePreset_Settings(int index, struct NativeSettings *settings)
+{
+	if (NativePreset_IsCustom(index))
+	{
+		*settings = s_customPresets[index - NATIVE_PRESET_BUILTIN_COUNT].settings;
+		return;
+	}
+	NativePreset_BuiltinSettings(index, settings);
+}
+
+int NativePreset_Matches(int index)
+{
+	struct NativeSettings preset;
+	if ((index < 0) || (index >= NativePreset_Count()))
+	{
+		return 0;
+	}
+	NativePreset_Settings(index, &preset);
+	return NativePreset_PresetFieldsEqual(&g_settings, &preset);
+}
+
+void NativePreset_Apply(int index)
+{
+	struct NativeSettings preset;
+	if ((index < 0) || (index >= NativePreset_Count()))
+	{
+		return;
+	}
+	NativePreset_Settings(index, &preset);
+	NativeSettings_CopyPresetFields(&g_settings, &preset);
+}
+
+// Custom presets are saved as [preset.N] sections: a quoted name, then
+// "<section>.<key> = value" lines for every preset setting.
+internal void NativePreset_SaveFile(void)
+{
+	if (s_presetsPath[0] == '\0')
+	{
+		return;
+	}
+
+	FILE *file = fopen(s_presetsPath, "w");
+	if (file == NULL)
+	{
+		Platform_LogWarn("[CTR Native] Settings: cannot write %s\n", s_presetsPath);
+		return;
+	}
+
+	fprintf(file, "# CTR Native custom presets. Edited by the in-game menu (F1).\n");
+
+	char text[NATIVE_CVAR_TEXT_MAX];
+	for (int p = 0; p < s_customPresetCount; p++)
+	{
+		const struct NativePreset *preset = &s_customPresets[p];
+		fprintf(file, "\n[preset.%d]\nname = \"%s\"\n", p + 1, preset->name);
+		for (int i = 0; i < s_settingCount; i++)
+		{
+			const struct NativeCVar *desc = &s_settingDescs[i];
+			if ((desc->flags & NATIVE_CVAR_FLAG_PRESET) != 0)
+			{
+				NativeSettings_Format(&preset->settings, desc, text, sizeof(text));
+				fprintf(file, "%s.%s = %s\n", desc->section, desc->key, text);
+			}
+		}
+	}
+
+	fclose(file);
+}
+
+internal void NativePreset_LoadFile(void)
+{
+	s_customPresetCount = 0;
+
+	FILE *file = fopen(s_presetsPath, "r");
+	if (file == NULL)
+	{
+		return;
+	}
+
+	char line[NATIVE_SETTINGS_LINE_MAX];
+	struct NativePreset *preset = NULL;
+	while (fgets(line, sizeof(line), file) != NULL)
+	{
+		char *text = NativeSettings_Trim(line);
+		if ((text[0] == '\0') || (text[0] == '#'))
+		{
+			continue;
+		}
+
+		// Each [preset.N] starts a preset, holding the retail values until its lines say otherwise.
+		if (text[0] == '[')
+		{
+			preset = NULL;
+			if ((strncmp(text, "[preset.", 8) == 0) && (s_customPresetCount < NATIVE_PRESET_CUSTOM_MAX))
+			{
+				preset = &s_customPresets[s_customPresetCount++];
+				preset->name[0] = '\0';
+				NativeSettings_SetDefaults(&preset->settings);
+				NativeSettings_SetRetail(&preset->settings);
+			}
+			continue;
+		}
+
+		char *equals = strchr(text, '=');
+		if ((preset == NULL) || (equals == NULL))
+		{
+			continue;
+		}
+		*equals = '\0';
+		const char *key = NativeSettings_Trim(text);
+		const char *value = NativeSettings_Trim(equals + 1);
+
+		if (strcmp(key, "name") == 0)
+		{
+			NativeSettings_Unquote(value, preset->name, sizeof(preset->name));
+			continue;
+		}
+
+		const struct NativeCVar *desc = NativeCVar_Find(key);
+		if ((desc == NULL) || ((desc->flags & NATIVE_CVAR_FLAG_PRESET) == 0) || !NativeSettings_SetFromText(&preset->settings, desc, value))
+		{
+			Platform_LogWarn("[CTR Native] Settings: preset key %s ignored\n", key);
+		}
+	}
+	fclose(file);
+
+	// Drop presets without a usable name.
+	int kept = 0;
+	for (int p = 0; p < s_customPresetCount; p++)
+	{
+		const char *name = s_customPresets[p].name;
+		int duplicate = 0;
+		for (int i = 0; i < kept; i++)
+		{
+			duplicate |= NativePreset_NameCompare(s_customPresets[i].name, name) == 0;
+		}
+		for (int i = 0; i < NATIVE_PRESET_BUILTIN_COUNT; i++)
+		{
+			duplicate |= NativePreset_NameCompare(s_builtinPresetNames[i], name) == 0;
+		}
+		if ((name[0] != '\0') && !duplicate)
+		{
+			s_customPresets[kept++] = s_customPresets[p];
+		}
+	}
+	s_customPresetCount = kept;
+	Platform_Log("[CTR Native] Settings: loaded %d custom preset(s) from %s\n", s_customPresetCount, s_presetsPath);
+}
+
+int NativePreset_SaveCustom(const char *name)
+{
+	char clean[NATIVE_PRESET_NAME_MAX];
+	int length = 0;
+
+	// Quotes and control characters can't be stored in the file's quoted names.
+	for (const char *c = name; (*c != '\0') && (length < NATIVE_PRESET_NAME_MAX - 1); c++)
+	{
+		if ((*c != '"') && (*c != '\\') && ((unsigned char)*c >= 0x20))
+		{
+			clean[length++] = *c;
+		}
+	}
+	clean[length] = '\0';
+	char *trimmed = NativeSettings_Trim(clean);
+
+	int index = NativePreset_Find(trimmed);
+	if ((trimmed[0] == '\0') || ((index >= 0) && !NativePreset_IsCustom(index)))
+	{
+		return -1;
+	}
+	if (index < 0)
+	{
+		if (s_customPresetCount >= NATIVE_PRESET_CUSTOM_MAX)
+		{
+			return -1;
+		}
+		index = NATIVE_PRESET_BUILTIN_COUNT + s_customPresetCount++;
+	}
+
+	struct NativePreset *preset = &s_customPresets[index - NATIVE_PRESET_BUILTIN_COUNT];
+	snprintf(preset->name, sizeof(preset->name), "%s", trimmed);
+	NativeSettings_SetDefaults(&preset->settings);
+	NativeSettings_CopyPresetFields(&preset->settings, &g_settings);
+	NativePreset_SaveFile();
+	return index;
+}
+
+void NativePreset_DeleteCustom(int index)
+{
+	if (!NativePreset_IsCustom(index))
+	{
+		return;
+	}
+	for (int p = index - NATIVE_PRESET_BUILTIN_COUNT; p < s_customPresetCount - 1; p++)
+	{
+		s_customPresets[p] = s_customPresets[p + 1];
+	}
+	s_customPresetCount--;
+	NativePreset_SaveFile();
 }

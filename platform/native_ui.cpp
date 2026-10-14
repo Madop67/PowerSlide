@@ -5,6 +5,7 @@
 // menu holds back only the device that opened it (the keyboard, or one controller).
 
 #include <platform/native_ui.h>
+#include <platform/native_branding.h>
 #include <platform/native_input_config.h>
 #include <platform/native_product.h>
 #include <platform/native_settings.h>
@@ -36,7 +37,8 @@ constexpr float kBaseFontSize = 16.0f;
 constexpr float kReferenceHeight = 720.0f;
 constexpr float kHeightScaleRate = 0.5f;
 constexpr float kMinHeightScale = 0.75f;
-constexpr float kTitleFontScale = 1.6f;
+// Logo height in the menu header, in font sizes.
+constexpr float kLogoFontScale = 2.0f;
 
 // Window size presets are these heights at the picture's aspect ratio.
 constexpr int kWindowHeights[] = {480, 720, 900, 1080, 1440, 2160};
@@ -84,6 +86,8 @@ float s_styleScale = 0.0f;
 bool s_customWindowSize = false;
 int s_customWindowWidth = 0;
 int s_customWindowHeight = 0;
+// Menu header logo, resampled from the embedded image to the size it is drawn at.
+ImTextureData *s_logoTexture = nullptr;
 
 void ApplyColors(ImGuiStyle &style)
 {
@@ -168,6 +172,76 @@ void LoadFont()
 	config.FontDataOwnedByAtlas = false;
 	snprintf(config.Name, sizeof(config.Name), "Fredoka SemiBold");
 	ImGui::GetIO().Fonts->AddFontFromMemoryTTF(const_cast<unsigned char *>(kNativeUiFontData), (int)sizeof(kNativeUiFontData), kBaseFontSize, &config);
+}
+
+void DestroyLogoTexture()
+{
+	if (s_logoTexture == nullptr)
+	{
+		return;
+	}
+	if (s_logoTexture->Status == ImTextureStatus_OK)
+	{
+		s_logoTexture->SetStatus(ImTextureStatus_WantDestroy);
+		s_logoTexture->UnusedFrames = 1;
+		ImGui_ImplOpenGL3_UpdateTexture(s_logoTexture);
+	}
+	IM_DELETE(s_logoTexture);
+	s_logoTexture = nullptr;
+}
+
+// Box-filters the logo down to the height it is drawn at, so it stays smooth at every
+// menu size (the GL backend samples bilinearly, without mipmaps). Runs between frames.
+void UpdateLogoTexture()
+{
+	int sourceWidth = 0;
+	int sourceHeight = 0;
+	const unsigned char *source = NativeBranding_GetLogo(&sourceWidth, &sourceHeight);
+	const int height = SDL_clamp((int)(kBaseFontSize * s_styleScale * kLogoFontScale + 0.5f), 1, sourceHeight);
+	if ((s_logoTexture != nullptr) && (s_logoTexture->Height == height))
+	{
+		return;
+	}
+	DestroyLogoTexture();
+
+	const int width = SDL_max((sourceWidth * height + sourceHeight / 2) / sourceHeight, 1);
+	s_logoTexture = IM_NEW(ImTextureData)();
+	s_logoTexture->Create(ImTextureFormat_RGBA32, width, height);
+	s_logoTexture->UseColors = true;
+
+	unsigned char *out = (unsigned char *)s_logoTexture->GetPixels();
+	for (int y = 0; y < height; y++)
+	{
+		const int y0 = y * sourceHeight / height;
+		const int y1 = SDL_max((y + 1) * sourceHeight / height, y0 + 1);
+		for (int x = 0; x < width; x++, out += 4)
+		{
+			const int x0 = x * sourceWidth / width;
+			const int x1 = SDL_max((x + 1) * sourceWidth / width, x0 + 1);
+			// Average with premultiplied alpha, so transparent pixels don't darken the edges.
+			unsigned int sum[4] = {0, 0, 0, 0};
+			for (int sy = y0; sy < y1; sy++)
+			{
+				for (int sx = x0; sx < x1; sx++)
+				{
+					const unsigned char *in = &source[(sy * sourceWidth + sx) * 4];
+					sum[0] += in[0] * in[3];
+					sum[1] += in[1] * in[3];
+					sum[2] += in[2] * in[3];
+					sum[3] += in[3];
+				}
+			}
+			const unsigned int count = (unsigned int)((y1 - y0) * (x1 - x0));
+			for (int c = 0; c < 3; c++)
+			{
+				out[c] = (unsigned char)((sum[3] != 0) ? (sum[c] + sum[3] / 2) / sum[3] : 0);
+			}
+			out[3] = (unsigned char)((sum[3] + count / 2) / count);
+		}
+	}
+
+	s_logoTexture->SetStatus(ImTextureStatus_WantCreate);
+	ImGui_ImplOpenGL3_UpdateTexture(s_logoTexture);
 }
 
 void UpdateStyleScale()
@@ -494,12 +568,25 @@ bool DrawAspectRatio(NativeVideoSettings &video, float comboWidth)
 	return changed;
 }
 
+// While PS1 mode is on, the options it resets are shown at their retail values and locked.
+void Ps1ModeNotice()
+{
+	if (g_settings.global.ps1Mode)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Text, Color(kOrangeLight));
+		ImGui::TextWrapped("PS1 mode is on: these options run at their original values. Turn it off in the Global tab to change them.");
+		ImGui::PopStyleColor();
+	}
+}
+
 void DrawVideoTab()
 {
 	NativeVideoSettings &video = g_settings.video;
 	bool changed = false;
 	const float comboWidth = ImGui::GetFontSize() * 12.0f;
+	const bool ps1Mode = g_settings.global.ps1Mode != 0;
 
+	Ps1ModeNotice();
 	SectionHeading("Display");
 
 	ImGui::SetNextItemWidth(comboWidth);
@@ -507,6 +594,7 @@ void DrawVideoTab()
 	HelpTooltip("Fullscreen uses the desktop resolution (borderless). F11 or Alt+Enter also toggles it.");
 
 	changed |= DrawWindowSize(video, comboWidth);
+	ImGui::BeginDisabled(ps1Mode);
 	changed |= DrawFrameRate(video, comboWidth);
 
 	SectionHeading("Picture");
@@ -532,14 +620,13 @@ void DrawVideoTab()
 
 	changed |= CheckboxInt("Texture filtering", &video.textureFiltering);
 	HelpTooltip("Bilinear filtering of in-game textures. Not part of the original look.");
-
-	changed |= CheckboxInt("Full-colour pause screen", &video.pauseFullColor);
-	HelpTooltip("Show the paused game in full colour behind the pause menu. Off uses the original sepia screenshot.");
+	ImGui::EndDisabled();
 
 	SectionHeading("Overlay");
 	changed |= CheckboxInt("Show FPS counter", &video.showFps);
 
 	ImGui::Spacing();
+	ImGui::BeginDisabled(ps1Mode);
 	if (ImGui::Button("Reset video settings"))
 	{
 		const int keepWidth = video.windowWidth;
@@ -552,7 +639,8 @@ void DrawVideoTab()
 		s_customWindowSize = false;
 		changed = true;
 	}
-	HelpTooltip("Restores every video option except the window size.");
+	ImGui::EndDisabled();
+	ImGui::SetItemTooltip("Restores every video option except the window size.");
 
 	if (changed)
 	{
@@ -1085,24 +1173,204 @@ void DrawInputTab()
 }
 
 //------------------------------------------------------------------------------------------------------------------------
-// Game tab
+// Tweaks tab
 
 constexpr const char *kFastBootNames[NATIVE_FAST_BOOT_COUNT] = {"Off", "Straight to title", "Straight to main menu"};
 
-void DrawGameTab()
+void DrawTweaksTab()
 {
 	NativeGameSettings &game = g_settings.game;
+	NativeVideoSettings &video = g_settings.video;
 	const float comboWidth = ImGui::GetFontSize() * 12.0f;
+	bool changed = false;
+	bool videoChanged = false;
+
+	Ps1ModeNotice();
+	ImGui::BeginDisabled(g_settings.global.ps1Mode != 0);
 
 	SectionHeading("Boot");
 
 	ImGui::SetNextItemWidth(comboWidth);
-	if (ImGui::Combo("Fast boot", &game.fastBoot, kFastBootNames, NATIVE_FAST_BOOT_COUNT))
+	changed |= ImGui::Combo("Fast boot", &game.fastBoot, kFastBootNames, NATIVE_FAST_BOOT_COUNT);
+	HelpTooltip("Skips the logo screens and the Naughty Dog crate intro; \"Straight to main menu\" also skips the title animation. "
+	            "Takes effect the next time the game starts.");
+
+	SectionHeading("Menus");
+
+	videoChanged |= CheckboxInt("Full-colour pause screen", &video.pauseFullColor);
+	HelpTooltip("Show the paused game in full colour behind the pause menu. Off uses the original sepia screenshot.");
+
+	SectionHeading("Cheats");
+
+	changed |= CheckboxInt("Unlock all characters", &game.unlockAllCharacters);
+	HelpTooltip("Every character can be picked at character select, including the secret ones. "
+	            "Your save is not changed: turning this off locks them again.");
+
+	changed |= CheckboxInt("Unlimited turbo", &game.unlimitedTurbo);
+	HelpTooltip("Start every race holding turbos that never run out (the game's own cheat). "
+	            "Takes effect from the next race; not used in time trial.");
+
+	changed |= CheckboxInt("Unlimited wumpa fruit", &game.unlimitedWumpa);
+	HelpTooltip("Start every race with full wumpa fruit that is never lost, so weapons are always juiced up (the game's own cheat). "
+	            "Takes effect from the next race; not used in time trial.");
+
+	ImGui::EndDisabled();
+
+	if (videoChanged)
+	{
+		CommitVideoSettings();
+	}
+	else if (changed)
 	{
 		NativeSettings_Save();
 	}
-	HelpTooltip("Skips the logo screens and the Naughty Dog crate intro; \"Straight to main menu\" also skips the title animation. "
-	            "Takes effect the next time the game starts.");
+}
+
+//------------------------------------------------------------------------------------------------------------------------
+// Global tab
+
+// Preset last picked or saved; shown when several presets hold the same settings.
+int s_lastPreset = -1;
+bool s_namingPreset = false;
+bool s_focusPresetName = false;
+char s_presetName[NATIVE_PRESET_NAME_MAX] = "";
+const char *s_presetError = nullptr;
+
+// The preset the current settings match, or -1.
+int MatchingPreset()
+{
+	if (NativePreset_Matches(s_lastPreset))
+	{
+		return s_lastPreset;
+	}
+	for (int i = 0; i < NativePreset_Count(); i++)
+	{
+		if (NativePreset_Matches(i))
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+void DrawPresetSection(float comboWidth)
+{
+	SectionHeading("Presets");
+
+	const int current = MatchingPreset();
+	ImGui::BeginDisabled(g_settings.global.ps1Mode != 0);
+
+	ImGui::SetNextItemWidth(comboWidth);
+	if (ImGui::BeginCombo("Preset", (current >= 0) ? NativePreset_Name(current) : "Custom (unsaved)"))
+	{
+		for (int i = 0; i < NativePreset_Count(); i++)
+		{
+			if (i == NATIVE_PRESET_BUILTIN_COUNT)
+			{
+				ImGui::Separator();
+			}
+			ImGui::PushID(i);
+			if (ImGui::Selectable(NativePreset_Name(i), i == current))
+			{
+				NativePreset_Apply(i);
+				s_lastPreset = i;
+				s_customWindowSize = false;
+				CommitVideoSettings();
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndCombo();
+	}
+	HelpTooltip("Sets the Video picture options and the Tweaks tab in one go. Vanilla is the original game; Enhanced adds "
+	            "widescreen, 4x resolution, frame rate matched to the display, a full-colour pause screen and fast boot. "
+	            "Controls and the window are not changed.");
+
+	if (!s_namingPreset)
+	{
+		if (ImGui::Button("Save as preset..."))
+		{
+			s_namingPreset = true;
+			s_focusPresetName = true;
+			s_presetError = nullptr;
+			snprintf(s_presetName, sizeof(s_presetName), "%s", NativePreset_IsCustom(current) ? NativePreset_Name(current) : "");
+		}
+		HelpTooltip("Save the current options as a preset of your own. Saving with an existing name replaces that preset.");
+
+		if (NativePreset_IsCustom(current))
+		{
+			ImGui::SameLine();
+			if (ImGui::Button("Delete preset"))
+			{
+				NativePreset_DeleteCustom(current);
+				s_lastPreset = -1;
+			}
+			ImGui::SetItemTooltip("Delete \"%s\". Your current options stay as they are.", NativePreset_Name(current));
+		}
+	}
+	else
+	{
+		ImGui::SetNextItemWidth(comboWidth);
+		if (s_focusPresetName)
+		{
+			ImGui::SetKeyboardFocusHere();
+			s_focusPresetName = false;
+		}
+		const bool entered = ImGui::InputTextWithHint("##presetName", "Preset name", s_presetName, sizeof(s_presetName),
+		                                              ImGuiInputTextFlags_EnterReturnsTrue);
+		ImGui::SameLine();
+		if (ImGui::Button("Save") || entered)
+		{
+			const int existing = NativePreset_Find(s_presetName);
+			const int saved = NativePreset_SaveCustom(s_presetName);
+			if (saved >= 0)
+			{
+				s_lastPreset = saved;
+				s_namingPreset = false;
+			}
+			else if ((existing >= 0) && !NativePreset_IsCustom(existing))
+			{
+				s_presetError = "That name belongs to a built-in preset.";
+			}
+			else if (s_presetName[0] == '\0')
+			{
+				s_presetError = "Enter a name.";
+			}
+			else
+			{
+				s_presetError = "No room for more presets; delete one first.";
+			}
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel"))
+		{
+			s_namingPreset = false;
+		}
+		if (s_presetError != nullptr)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, Color(kOrangeLight));
+			ImGui::TextUnformatted(s_presetError);
+			ImGui::PopStyleColor();
+		}
+	}
+
+	ImGui::EndDisabled();
+}
+
+void DrawGlobalTab()
+{
+	const float comboWidth = ImGui::GetFontSize() * 12.0f;
+
+	if (CheckboxInt("PS1 Mode", &g_settings.global.ps1Mode))
+	{
+		NativeSettings_RefreshPs1Mode();
+		s_namingPreset = false;
+		CommitVideoSettings();
+	}
+	HelpTooltip("Play exactly like the original PlayStation game: every picture, frame rate, menu and cheat option runs at its "
+	            "original value, overriding presets. Your own choices are kept and come back when you turn this off. "
+	            "Controls, the window and the FPS counter are not affected.");
+
+	DrawPresetSection(comboWidth);
 }
 
 void DrawAboutTab()
@@ -1135,20 +1403,23 @@ void DrawAboutTab()
 
 void DrawTitle()
 {
-	ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * kTitleFontScale);
-	ImGui::PushStyleColor(ImGuiCol_Text, Color(kYellow));
-	ImGui::TextUnformatted("POWER");
-	ImGui::PopStyleColor();
-	ImGui::SameLine(0.0f, 0.0f);
-	ImGui::PushStyleColor(ImGuiCol_Text, Color(kOrange));
-	ImGui::TextUnformatted("SLIDE");
-	ImGui::PopStyleColor();
-	ImGui::PopFont();
+	const float top = ImGui::GetCursorPosY();
+	float height = ImGui::GetTextLineHeight();
+	if ((s_logoTexture != nullptr) && (s_logoTexture->Status == ImTextureStatus_OK))
+	{
+		height = (float)s_logoTexture->Height;
+		ImGui::Image(ImTextureRef(s_logoTexture->GetTexID()), ImVec2((float)s_logoTexture->Width, height));
+	}
+	else
+	{
+		ImGui::TextUnformatted(NATIVE_PRODUCT_NAME);
+	}
 
+	// The hint sits at the right, centred on the logo.
 	const char *hint = (s_menuController != 0) ? "Home / L3 + R3 to close" : "F1 / Esc to close";
 	ImGui::SameLine();
 	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(hint).x);
-	ImGui::AlignTextToFramePadding();
+	ImGui::SetCursorPosY(top + (height - ImGui::GetTextLineHeight()) * 0.5f);
 	ImGui::TextDisabled("%s", hint);
 }
 
@@ -1178,9 +1449,14 @@ void DrawMainWindow()
 				DrawInputTab();
 				ImGui::EndTabItem();
 			}
-			if (ImGui::BeginTabItem("Game"))
+			if (ImGui::BeginTabItem("Tweaks"))
 			{
-				DrawGameTab();
+				DrawTweaksTab();
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Global"))
+			{
+				DrawGlobalTab();
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("About"))
@@ -1289,6 +1565,7 @@ extern "C" void NativeUI_Shutdown(void)
 	}
 
 	s_initialized = false;
+	DestroyLogoTexture();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplSDL3_Shutdown();
 	ImGui::DestroyContext();
@@ -1332,6 +1609,10 @@ extern "C" void NativeUI_Render(void)
 	UpdateInputCapture();
 
 	ImGui_ImplOpenGL3_NewFrame();
+	if (s_menuOpen)
+	{
+		UpdateLogoTexture();
+	}
 	ImGui_ImplSDL3_NewFrame();
 	ImGui::NewFrame();
 

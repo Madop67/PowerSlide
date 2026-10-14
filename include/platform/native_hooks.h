@@ -35,7 +35,10 @@ struct NativeBootHook
 	/* After the game logic of a 30 Hz tick, before its frame is drawn. */                        \
 	X(BeforeDraw, (struct GameTracker * gGT, struct GamepadSystem * gGamepads), (gGT, gGamepads)) \
 	/* After the tick's frame is presented. */                                                    \
-	X(AfterPresent, (struct GameTracker * gGT), (gGT))
+	X(AfterPresent, (struct GameTracker * gGT), (gGT))                                             \
+	/* Character select asks whether a locked-by-default character is unlocked; set */           \
+	/* *unlocked to override the save's answer. */                                                \
+	X(CharacterUnlocked, (int *unlocked), (unlocked))
 
 #define NATIVE_HOOK_DECLARE(name, params, args)                  \
 	typedef void(*NativeHook_##name##_Fn) params;                \

@@ -1,0 +1,3 @@
+// Windows executable icon (Explorer, shortcuts); the window icon is set at runtime by
+// NativeBranding_SetWindowIcon. powerslide.ico comes from tools/branding/make_branding.py.
+1 ICON "powerslide.ico"

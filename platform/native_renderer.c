@@ -8,6 +8,7 @@
 #include "platform/native_renderer_types.h"
 #include <SDL3/SDL.h>
 
+#include "platform/native_branding.h"
 #include "platform/native_gpu.h"
 #include "platform/native_glad.h"
 #include "platform/native_log.h"
@@ -209,6 +210,7 @@ internal int NativeRenderer_InitialiseGLContext(char *windowName, int fullscreen
 		NATIVE_RENDERER_ERROR("%s\n", "Failed to initialise SDL window!");
 		return 0;
 	}
+	NativeBranding_SetWindowIcon(g_window);
 
 	int major_version = 3;
 	int minor_version = 3;

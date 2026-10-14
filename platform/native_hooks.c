@@ -33,9 +33,11 @@ NATIVE_HOOKS(NATIVE_HOOK_DEFINE)
 
 void NativeInterp_RegisterHooks(void);
 void NativeFastBoot_RegisterHooks(void);
+void NativeTweaks_RegisterHooks(void);
 
 void NativeHooks_RegisterModules(void)
 {
 	NativeInterp_RegisterHooks();
 	NativeFastBoot_RegisterHooks();
+	NativeTweaks_RegisterHooks();
 }

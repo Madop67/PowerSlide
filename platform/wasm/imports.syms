@@ -83,6 +83,7 @@ SDL_SetCursor
 SDL_SetHint
 SDL_SetTextInputArea
 SDL_SetWindowFullscreen
+SDL_SetWindowIcon
 SDL_SetWindowPosition
 SDL_SetWindowSize
 SDL_ShowCursor
