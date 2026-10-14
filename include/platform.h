@@ -35,7 +35,8 @@ void Platform_WaitUntilTime(unsigned long long target);
 int Platform_GetTargetFrameRate(void);
 void Platform_PollHostEvents(void);
 #if defined(CTR_INTERNAL)
-// --screenshot-every: saves debug/shots/frame-NNNNNN.bmp every N replay frames (0 = off).
+// --screenshot-every: saves debug/shots/frame-NNNNNN.bmp every N frames (0 = off): replay
+// frames while recording or playing back, presented frames otherwise.
 void Platform_SetScreenshotInterval(unsigned int frames);
 #endif
 int Platform_PollInput(void);

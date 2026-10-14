@@ -660,6 +660,16 @@ void StateZero()
 	memcpy(gGT->levelName, sdata->s_ndi, sizeof(sdata->s_ndi));
 	// gGT->levelID = OXIDE_TRUE_ENDING;
 
+#if defined(CTR_NATIVE)
+	// Fast boot may skip the logo screens and the crate intro and load the main menu first.
+	struct NativeBootHook nativeBoot = {0};
+	NATIVE_HOOK(Boot, &nativeBoot);
+	if (nativeBoot.skipIntro)
+	{
+		gGT->levelID = MAIN_MENU_LEVEL;
+	}
+#endif
+
 	InitGeom();
 	SetGeomOffset(0x100, 0x78); // width/2, height/2
 	SetGeomScreen(0x140);       // "distance" to screen, alters FOV
@@ -681,32 +691,43 @@ void StateZero()
 	PutDrawEnv(&gGT->db[1].drawEnv);
 	DrawSync(0);
 
-	// Load Intro TIM for "SCEA Presents" from VRAM file
-	LOAD_VramFile(sdata->ptrBigfile1, 0x1fd, NULL, &vramSize, -1);
-	MainInit_VRAMDisplay();
+#if defined(CTR_NATIVE)
+	if (!nativeBoot.skipIntro)
+#endif
+	{
+		// Load Intro TIM for "SCEA Presents" from VRAM file
+		LOAD_VramFile(sdata->ptrBigfile1, 0x1fd, NULL, &vramSize, -1);
+		MainInit_VRAMDisplay();
+	}
 
 	// \SOUNDS\KART.HWL;1
 	howl_InitGlobals(data.kartHwlPath);
 
 	VSyncCallback(MainDrawCb_Vsync);
 
-	Music_SetIntro();
-	CseqMusic_StopAll();
-	CseqMusic_Start(CSEQ_SONG_LEVEL, 0, NULL, 0, 0);
-	Music_Start(0);
-
-	// "Start your engines, for Sony Computer..."
-	CDSYS_XAPlay(CDSYS_XA_TYPE_EXTRA, 0x50);
-
-	while (sdata->XA_State != 0)
-	{
-		// WARNING: Read-only address (ram, 0x8008d888) is written
-#ifdef CTR_NATIVE
-		// NOTE(aalhendi): Retail hardware interrupts keep XA/audio moving while
-		// this loop spins. Native owns VBlank in VSync(), so pump it here.
-		VSync(0);
+	// The crate intro's song and the SCEA voice line; the main menu loads its own song.
+#if defined(CTR_NATIVE)
+	if (!nativeBoot.skipIntro)
 #endif
-		CDSYS_XAPauseAtEnd();
+	{
+		Music_SetIntro();
+		CseqMusic_StopAll();
+		CseqMusic_Start(CSEQ_SONG_LEVEL, 0, NULL, 0, 0);
+		Music_Start(0);
+
+		// "Start your engines, for Sony Computer..."
+		CDSYS_XAPlay(CDSYS_XA_TYPE_EXTRA, 0x50);
+
+		while (sdata->XA_State != 0)
+		{
+			// WARNING: Read-only address (ram, 0x8008d888) is written
+#ifdef CTR_NATIVE
+			// NOTE(aalhendi): Retail hardware interrupts keep XA/audio moving while
+			// this loop spins. Native owns VBlank in VSync(), so pump it here.
+			VSync(0);
+#endif
+			CDSYS_XAPauseAtEnd();
+		}
 	}
 
 	DecalGlobal_Clear(gGT);

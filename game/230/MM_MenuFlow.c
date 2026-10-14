@@ -1,5 +1,9 @@
 #include <common.h>
 
+#if defined(CTR_NATIVE)
+#include <platform/native_hooks.h>
+#endif
+
 s32 MM_TransitionInOut(struct TransitionMeta *meta, s32 framesPassed, s32 numFrames)
 {
 	s16 negativeTransitionState;
@@ -699,6 +703,17 @@ void MM_JumpTo_Title_FirstTime(void)
 	MM_ACTIVE_MENU = mainMenu;
 
 	MM_TITLE_INTRO_FRAME = 0;
+#if defined(CTR_NATIVE)
+	{
+		// Fast boot may start at the menu, as if the intro had been skipped.
+		int nativeSkipIntro = 0;
+		NATIVE_HOOK(TitleIntro, &nativeSkipIntro);
+		if (nativeSkipIntro)
+		{
+			MM_TITLE_INTRO_FRAME = TITLE_INTRO_SKIP_FRAME;
+		}
+	}
+#endif
 	gGT = GAME_TRACKER;
 
 	// first time in main menu

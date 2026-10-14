@@ -76,8 +76,9 @@ build/ctr_native --vanilla --record --from-boot --record-frames 9000
 - `--input-script FILE`: pad 1 follows a script instead of your input, for repeatable
   recordings. Each line is `<frame> <buttons>` and holds those buttons (`cross`,
   `dpad_left`, `l1` ...; `-` for none) from that frame on. See `tools/replays/scripts/`.
-- `--screenshot-every N`: saves `debug/shots/frame-NNNNNN.bmp` every N frames, while
-  recording or playing back, to see what a script did.
+- `--screenshot-every N`: saves `debug/shots/frame-NNNNNN.bmp` every N frames, to see
+  what a script did. Counts replay frames while recording or playing back, and
+  presented frames otherwise.
 
 Play back as a check:
 

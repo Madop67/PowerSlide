@@ -17,8 +17,21 @@ extern "C" {
 struct GameTracker;
 struct GamepadSystem;
 
+// Boot, before the first level loads. Handlers set the fields to change the boot.
+struct NativeBootHook
+{
+	// Skip the SCEA and copyright screens and the Naughty Dog crate intro; load the
+	// main menu first.
+	int skipIntro;
+};
+
 // X(Name, parameter list, argument list)
 #define NATIVE_HOOKS(X)                                                                            \
+	/* In StateZero, before the logo screen and the first level load. */                          \
+	X(Boot, (struct NativeBootHook * boot), (boot))                                                \
+	/* The title animation starts (after boot or attract mode); set *skipIntro to start at the */ \
+	/* menu, as if a button had been pressed. */                                                  \
+	X(TitleIntro, (int *skipIntro), (skipIntro))                                                   \
 	/* After the game logic of a 30 Hz tick, before its frame is drawn. */                        \
 	X(BeforeDraw, (struct GameTracker * gGT, struct GamepadSystem * gGamepads), (gGT, gGamepads)) \
 	/* After the tick's frame is presented. */                                                    \
