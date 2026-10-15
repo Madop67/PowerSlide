@@ -8,8 +8,14 @@
 # 3. That C, the wasm2c runtime and the host layer in platform/wasm_host/
 #    (WASI, SDL3 and OpenGL imports) build one native executable.
 #
+# 4. The executable is also wrapped as PowerSlide.app, whose host runs a
+#    first-run setup window that imports the user's disc image (see
+#    platform/wasm_host/host_setup_macos.m). package-macos.sh makes the DMG.
+#
 # Toolchain: tools/macos/fetch-toolchain.sh installs the pinned wasi-sdk and
 # WABT into externals/.toolchains/.
+
+enable_language(OBJC)
 
 set(CTR_WASI_SDK_DIR "${CMAKE_SOURCE_DIR}/externals/.toolchains/wasi-sdk" CACHE PATH "wasi-sdk install directory")
 set(CTR_WABT_DIR "${CMAKE_SOURCE_DIR}/externals/.toolchains/wabt" CACHE PATH "WABT install directory")
@@ -156,6 +162,14 @@ add_custom_command(
 
 # ---- Host executable --------------------------------------------------------
 
+# libchdr decodes .chd disc images during first-run setup (host only).
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(INSTALL_STATIC_LIBS OFF CACHE BOOL "" FORCE)
+set(WITH_SYSTEM_ZLIB OFF CACHE BOOL "" FORCE)
+set(WITH_SYSTEM_ZSTD OFF CACHE BOOL "" FORCE)
+set(CHDR_WANT_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(externals/libchdr EXCLUDE_FROM_ALL)
+
 add_executable(ctr_native
     ${CTR_GUEST_C_FILES}
     ${CTR_WASM2C_RT_DIR}/wasm-rt-impl.c
@@ -166,6 +180,8 @@ add_executable(ctr_native
     platform/wasm_host/host_sdl.c
     platform/wasm_host/host_gl.c
     platform/wasm_host/host_gl.gen.c
+    platform/wasm_host/host_disc_import.c
+    platform/wasm_host/host_setup_macos.m
 )
 set_target_properties(ctr_native PROPERTIES
     C_STANDARD 17
@@ -181,12 +197,56 @@ target_include_directories(ctr_native PRIVATE
 target_compile_options(ctr_native PRIVATE $<$<CONFIG:Release>:-O2>)
 # NOTE: wasm2c output trips many harmless warnings (unused labels/params etc).
 set_source_files_properties(${CTR_GUEST_C_FILES} PROPERTIES COMPILE_OPTIONS "-w")
-target_link_libraries(ctr_native PRIVATE SDL3::SDL3 "-framework OpenGL")
+# NOTE: Only the setup window needs include/ (for native_product.h).
+set_source_files_properties(platform/wasm_host/host_setup_macos.m PROPERTIES
+    COMPILE_OPTIONS "-fobjc-arc"
+    INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/include"
+)
+target_link_libraries(ctr_native PRIVATE
+    SDL3::SDL3
+    chdr-static
+    "-framework OpenGL"
+    "-framework AppKit"
+    "-framework UniformTypeIdentifiers"
+)
+
+# ---- PowerSlide.app ---------------------------------------------------------
+
+# The bundle takes its name from the user-facing product name; the executable
+# inside keeps the upstream name.
+file(STRINGS "${CMAKE_SOURCE_DIR}/include/platform/native_product.h" ctr_product_line REGEX "define NATIVE_PRODUCT_NAME ")
+string(REGEX REPLACE ".*\"(.*)\".*" "\\1" CTR_APP_NAME "${ctr_product_line}")
+string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" CTR_APP_SHORT_VERSION "${CTR_NATIVE_VERSION}")
+set(CTR_APP_DIR "${CMAKE_BINARY_DIR}/${CTR_APP_NAME}.app")
+set(CTR_APP_STAMP "${CMAKE_BINARY_DIR}/ctr_native_app.stamp")
+set(CTR_APP_ICON "${CMAKE_SOURCE_DIR}/platform/macos/PowerSlide.icns")
+configure_file("${CMAKE_SOURCE_DIR}/platform/macos/Info.plist.in" "${CMAKE_BINARY_DIR}/app/Info.plist" @ONLY)
+
+add_custom_command(
+    OUTPUT "${CTR_APP_STAMP}"
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${CTR_APP_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CTR_APP_DIR}/Contents/MacOS" "${CTR_APP_DIR}/Contents/Resources"
+    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_BINARY_DIR}/app/Info.plist" "${CTR_APP_DIR}/Contents/Info.plist"
+    COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:ctr_native>" "${CTR_APP_DIR}/Contents/MacOS/ctr_native"
+    COMMAND "${CMAKE_COMMAND}" -E copy "${CTR_APP_ICON}" "${CTR_APP_DIR}/Contents/Resources/PowerSlide.icns"
+    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${CTR_APP_DIR}/Contents/Resources/"
+    # NOTE: Ad-hoc signature so the bundle runs locally; package-macos.sh re-signs for release.
+    COMMAND codesign --force --sign - --timestamp=none "${CTR_APP_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CTR_APP_STAMP}"
+    DEPENDS ctr_native "${CMAKE_BINARY_DIR}/app/Info.plist" "${CTR_APP_ICON}" "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
+    COMMENT "Assembling ${CTR_APP_NAME}.app"
+    VERBATIM
+)
+add_custom_target(ctr_native_app ALL DEPENDS "${CTR_APP_STAMP}")
 
 include(CTest)
 if(BUILD_TESTING)
     add_test(NAME ctr_native_version COMMAND $<TARGET_FILE:ctr_native> --version)
     set_tests_properties(ctr_native_version PROPERTIES PASS_REGULAR_EXPRESSION "^PowerSlide ")
+
+    # In the bundle, --version must skip first-run setup.
+    add_test(NAME ctr_native_app_version COMMAND "${CTR_APP_DIR}/Contents/MacOS/ctr_native" --version)
+    set_tests_properties(ctr_native_app_version PROPERTIES PASS_REGULAR_EXPRESSION "^PowerSlide " TIMEOUT 30)
 
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(

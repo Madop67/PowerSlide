@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
+
+# NOTE: Must be set before project(). Also the app bundle's LSMinimumSystemVersion.
+if(CMAKE_HOST_APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version" FORCE)
+endif()
+
 project(CTR-Native C CXX)
 include(CheckCCompilerFlag)
 

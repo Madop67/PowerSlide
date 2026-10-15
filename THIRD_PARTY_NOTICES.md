@@ -105,6 +105,27 @@ guest C code is also wasm2c output.
 Licensed under the Apache License, Version 2.0. The full license text is in
 `externals/wasm2c-rt/LICENSE`.
 
+## libchdr
+
+Path: `externals/libchdr`
+
+Source: <https://github.com/rtissera/libchdr>
+
+libchdr reads `.chd` disc images in the macOS app's first-run setup, which
+converts them to the raw disc image the game reads. It is linked into the
+macOS host only. Vendored commit: `47d794151b2b64f6aba60304e6480f4f5a2bc24b`.
+
+Copyright Romain Tisserand. Licensed under the BSD 3-Clause License; the full
+text is in `externals/libchdr/LICENSE.txt`.
+
+libchdr bundles these decoders, each under its own license:
+
+- zstd 1.5.7 (`deps/zstd-1.5.7`): BSD license, Copyright (c) Meta Platforms,
+  Inc. and affiliates (dual-licensed BSD/GPLv2; used under BSD).
+- LZMA SDK 26.02 (`deps/lzma-26.02`): public domain.
+- miniz 3.1.2 (`deps/miniz-3.1.2`): Unlicense (public domain).
+- dr_flac (`include/dr_libs/dr_flac.h`): public domain or MIT-0, at your choice.
+
 ## maspsx
 
 Source: <https://github.com/mkst/maspsx>

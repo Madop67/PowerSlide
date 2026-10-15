@@ -76,7 +76,16 @@ brew install cmake
 
 macOS cannot run 32-bit executables, and the game depends on 32-bit pointers (retail struct layouts and asset files patched with 4-byte pointers). The macOS build therefore compiles the game to wasm32, which is also a 32-bit-pointer target, translates it back to C with `wasm2c`, and links it into a native arm64 executable. A small host layer in `platform/wasm_host/` provides file I/O (WASI), SDL3 and OpenGL. See `cmake/ctr_wasm_sandbox.cmake` for details. The in-game settings menu (Dear ImGui) is compiled into the wasm module too. If the renderer or the menu starts calling a new GL function, rerun `tools/macos/gen_wasm_gl_bridge.py`; a new SDL function goes in `platform/wasm/imports.syms` and `platform/wasm_host/host_sdl.c`.
 
-To get the disc image from a `.chd`: `brew install rom-tools`, then `chdman extractcd -i game.chd -o assets/ctr-u.cue -ob assets/ctr-u.bin`.
+To get the disc image from a `.chd` for the bare `build-macos/ctr_native`: `brew install rom-tools`, then `chdman extractcd -i game.chd -o assets/ctr-u.cue -ob assets/ctr-u.bin`. The app bundle below reads `.chd` files itself.
+
+#### PowerSlide.app and the DMG
+
+`build-macos.sh` also assembles `build-macos/PowerSlide.app` and packages it as `dist/PowerSlide-<version>-macos-arm64.dmg` (`./build-macos.sh --no-dmg` skips the DMG; `./package-macos.sh` makes it on its own). The app is standalone: SDL3 and libchdr are linked statically, so it needs only macOS 12 or later.
+
+- Drag PowerSlide to Applications and open it. The first time, a setup window asks for your own NTSC-U disc image (`.cue` + `.bin`, `.bin` or `.chd`). It is checked (SCUS-94426) and copied, or converted from CHD, to `~/Library/Application Support/PowerSlide/assets/ctr-u.bin`.
+- Settings, memory cards and logs live in that folder too, never in the bundle.
+- Hold Option while opening the app to choose a different disc image.
+- Release signing: set `CODESIGN_IDENTITY` (a Developer ID Application identity) and, to notarize, `NOTARY_PROFILE` (a `notarytool` keychain profile) before `./package-macos.sh`. Without them the app is signed ad hoc, and users must right-click → Open the first time.
 
 ## Building
 
@@ -103,7 +112,7 @@ Output:
 - MSVC: `build-msvc-x86/Release/ctr_native.exe`
 - MinGW: `build/ctr_native.exe`
 - Linux: `build/ctr_native`
-- macOS: `build-macos/ctr_native`
+- macOS: `build-macos/ctr_native`, `build-macos/PowerSlide.app` and `dist/PowerSlide-<version>-macos-arm64.dmg`
 
 ### Clean build
 

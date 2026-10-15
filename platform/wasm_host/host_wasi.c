@@ -300,11 +300,22 @@ u32 w2c_wasi__snapshot__preview1_environ_get(struct w2c_wasi__snapshot__preview1
 
 // ---- process / clocks ------------------------------------------------------
 
+static void (*s_exitHandler)(int code);
+
+void HostWasi_SetExitHandler(void (*handler)(int code))
+{
+	s_exitHandler = handler;
+}
+
 void w2c_wasi__snapshot__preview1_proc_exit(struct w2c_wasi__snapshot__preview1 *ctx, u32 code)
 {
 	(void)ctx;
 	fflush(stdout);
 	fflush(stderr);
+	if ((code != 0) && (s_exitHandler != NULL))
+	{
+		s_exitHandler((int)code);
+	}
 	exit((int)code);
 }
 

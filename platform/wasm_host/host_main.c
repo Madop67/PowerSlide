@@ -3,12 +3,17 @@
 // Instantiates the wasm2c-translated guest module (game + platform code built
 // for wasm32-wasip1), wires up the WASI/SDL/GL imports, and runs `_start`.
 
+#include <fcntl.h>
 #include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "host_mem.h"
 #include "host_wasi.h"
+
+#if defined(__APPLE__)
+#include "host_setup_macos.h"
+#endif
 
 #include "wasm-rt-impl.h"
 
@@ -149,9 +154,101 @@ void HostHandle_Release(uint32_t handle)
 	}
 }
 
+static int HostMain_HasArg(int argc, char **argv, const char *name)
+{
+	for (int i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], name) == 0)
+		{
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+#if defined(__APPLE__)
+static int s_hostBundled;
+static char s_hostConsoleLog[4096];
+
+static void HostMain_ShowGuestError(const char *what)
+{
+	char message[512];
+
+	snprintf(message, sizeof(message), "%s The log file may say why.", what);
+	HostSetup_ShowFatal(message, (s_hostConsoleLog[0] != '\0') ? s_hostConsoleLog : NULL);
+}
+
+static void HostMain_OnGuestExit(int code)
+{
+	char what[128];
+
+	snprintf(what, sizeof(what), "The game quit with an error (code %d).", code);
+	HostMain_ShowGuestError(what);
+}
+
+// App bundle launch: pick the data folder (running first-run setup if
+// needed), send console output to a log there, and hand the folder to the
+// guest as --base-dir. Returns 0 if the user quit setup.
+static int HostMain_PrepareBundle(int *argc, char ***argv)
+{
+	static char baseDir[4096];
+
+	if (!HostSetup_Run(baseDir, sizeof(baseDir)) || (chdir(baseDir) != 0))
+	{
+		return 0;
+	}
+
+	// NOTE: Finder discards stdout/stderr, and asset errors print there before
+	// the game's own log opens.
+	snprintf(s_hostConsoleLog, sizeof(s_hostConsoleLog), "%s/ctr_native-console.log", baseDir);
+	int fd = open(s_hostConsoleLog, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd >= 0)
+	{
+		dup2(fd, STDOUT_FILENO);
+		dup2(fd, STDERR_FILENO);
+		close(fd);
+	}
+	else
+	{
+		s_hostConsoleLog[0] = '\0';
+	}
+
+	char **guestArgv = malloc(((size_t)*argc + 3) * sizeof(*guestArgv));
+	if (guestArgv == NULL)
+	{
+		return 0;
+	}
+
+	guestArgv[0] = (*argv)[0];
+	guestArgv[1] = "--base-dir";
+	guestArgv[2] = baseDir;
+	for (int i = 1; i < *argc; i++)
+	{
+		guestArgv[i + 2] = (*argv)[i];
+	}
+	guestArgv[*argc + 2] = NULL;
+
+	*argc += 2;
+	*argv = guestArgv;
+
+	s_hostBundled = 1;
+	HostWasi_SetExitHandler(HostMain_OnGuestExit);
+	return 1;
+}
+#endif
+
 int main(int argc, char **argv)
 {
 	char cwd[4096];
+
+#if defined(__APPLE__)
+	if (HostSetup_IsBundled() && !HostMain_HasArg(argc, argv, "--version") && !HostMain_HasArg(argc, argv, "-v") &&
+	    !HostMain_HasArg(argc, argv, "--base-dir") && !HostMain_PrepareBundle(&argc, &argv))
+	{
+		return 0;
+	}
+#endif
 
 	// NOTE: The guest's constructor chdir()s here so relative asset paths match
 	// the native builds; WASI itself starts in "/".
@@ -185,6 +282,14 @@ int main(int argc, char **argv)
 		fflush(stdout);
 		fprintf(stderr, "[CTR Native] guest trapped: %s\n", wasm_rt_strerror(trap));
 		exitCode = 1;
+
+#if defined(__APPLE__)
+		if (s_hostBundled)
+		{
+			fflush(stderr);
+			HostMain_ShowGuestError("The game crashed.");
+		}
+#endif
 	}
 
 	wasm2c_ctr_free(&g_hostGuest);

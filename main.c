@@ -159,6 +159,17 @@ static int NativeArg_IsPresent(int argc, char *argv[], const char *name)
 	return 0;
 }
 
+static const char *NativeArg_GetValue(int argc, char *argv[], const char *name)
+{
+	for (int argIndex = 1; argIndex + 1 < argc; argIndex++)
+	{
+		if (strcmp(argv[argIndex], name) == 0)
+		{
+			return argv[argIndex + 1];
+		}
+	}
+	return NULL;
+}
 
 int main(int argc, char *argv[])
 {
@@ -178,7 +189,16 @@ int main(int argc, char *argv[])
 	printf("[CTR Native] SDL base path: %s\n", sdlBasePath ? sdlBasePath : "(null)");
 	fflush(stdout);
 
-	if (!NativeAssets_Init(sdlBasePath))
+	// --base-dir replaces the executable's folder as the home of assets/,
+	// settings, memory cards and the log (the macOS app bundle passes its
+	// Application Support folder).
+	const char *basePath = NativeArg_GetValue(argc, argv, "--base-dir");
+	if (basePath == NULL)
+	{
+		basePath = sdlBasePath;
+	}
+
+	if (!NativeAssets_Init(basePath))
 	{
 		fprintf(stderr, "[CTR Native] Failed to initialize asset paths.\n");
 		return NativeConsole_Return(1);
