@@ -1358,7 +1358,11 @@ outerPlayerLoopComplete:
 			    // if character is unlocked
 			    // from the global unlock bitfield
 			    // also the variable written by cheats
+#if defined(CTR_NATIVE)
+			    MM_Characters_NativeUnlocked(CHECK_ADV_BIT(GAME_PROGRESS.unlocks, unlockRequirement)))
+#else
 			    CHECK_ADV_BIT(GAME_PROGRESS.unlocks, unlockRequirement))
+#endif
 			{
 				register struct TransitionMeta *iconTransition CTR_PSX_REGISTER("$3");
 				register struct MetaDataCHAR *iconCharacterMetadata CTR_PSX_REGISTER("$4");
@@ -1585,7 +1589,11 @@ outerPlayerLoopComplete:
 		    // if character is unlocked
 		    // from the global unlock bitfield
 		    // also the variable written by cheats
+#if defined(CTR_NATIVE)
+		    MM_Characters_NativeUnlocked(CHECK_ADV_BIT(GAME_PROGRESS.unlocks, unlockRequirement)))
+#else
 		    CHECK_ADV_BIT(GAME_PROGRESS.unlocks, unlockRequirement))
+#endif
 		{
 			iconRect.x = MM_CHARACTER_SELECT_TRANSITION_META[playerIndex].currX + preInputCharacterMeta->posX;
 			iconRect.y = MM_CHARACTER_SELECT_TRANSITION_META[playerIndex].currY + (s16)iconMetaTail[0];

@@ -16,6 +16,7 @@ extern "C" {
 
 struct GameTracker;
 struct GamepadSystem;
+struct Driver;
 
 // Boot, before the first level loads. Handlers set the fields to change the boot.
 struct NativeBootHook
@@ -38,7 +39,10 @@ struct NativeBootHook
 	X(AfterPresent, (struct GameTracker * gGT), (gGT))                                             \
 	/* Character select asks whether a locked-by-default character is unlocked; set */           \
 	/* *unlocked to override the save's answer. */                                                \
-	X(CharacterUnlocked, (int *unlocked), (unlocked))
+	X(CharacterUnlocked, (int *unlocked), (unlocked))                                              \
+	/* A kart was spawned and VehBirth_SetConsts filled its engine-class stats; handlers may */    \
+	/* change them. */                                                                            \
+	X(DriverConsts, (struct Driver * driver), (driver))
 
 #define NATIVE_HOOK_DECLARE(name, params, args)                  \
 	typedef void(*NativeHook_##name##_Fn) params;                \

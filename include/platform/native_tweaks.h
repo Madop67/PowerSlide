@@ -33,6 +33,10 @@ struct NativeCheat
 int NativeTweaks_CheatCount(void);
 const struct NativeCheat *NativeTweaks_CheatAt(int index);
 
+// The engine class human players' karts use (NativeEngineClass): game.engine_class, or
+// NATIVE_ENGINE_CLASS_CHARACTER when it is drift and game.drift_class is off.
+int NativeTweaks_EngineClass(void);
+
 #ifdef __cplusplus
 }
 #endif

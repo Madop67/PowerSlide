@@ -1451,6 +1451,8 @@ void DrawInputTab()
 // Tweaks tab
 
 constexpr const char *kFastBootNames[NATIVE_FAST_BOOT_COUNT] = {"Off", "Straight to title", "Straight to main menu"};
+constexpr const char *kEngineClassNames[NATIVE_ENGINE_CLASS_COUNT] = {"Character's own", "Balanced", "Acceleration",
+                                                                      "Speed",           "Turning",  "Drift (Nitro-Fueled)"};
 
 // Returns whether a video setting changed (the caller applies it); other changes are saved here.
 bool DrawTweaksGeneral()
@@ -1467,6 +1469,31 @@ bool DrawTweaksGeneral()
 	changed |= ComboInt("Fast boot", &game.fastBoot, kFastBootNames, NATIVE_FAST_BOOT_COUNT);
 	HelpTooltip("Skips the logo screens and the Naughty Dog crate intro; \"Straight to main menu\" also skips the title animation. "
 	            "Takes effect the next time the game starts.");
+
+	SectionHeading("Karts");
+
+	// Drift is listed last, so leaving it out is a shorter list.
+	int engineClass = NativeTweaks_EngineClass();
+	ImGui::SetNextItemWidth(comboWidth);
+	if (ComboInt("Engine class", &engineClass, kEngineClassNames, game.driftClass ? NATIVE_ENGINE_CLASS_COUNT : NATIVE_ENGINE_CLASS_DRIFT))
+	{
+		game.engineClass = engineClass;
+		changed = true;
+	}
+	HelpTooltip("Every player's kart drives with this engine class, whichever character they pick: Acceleration gets up to speed "
+	            "fastest, Speed has the highest top speed, Turning steers tightest. Opponents keep their own. "
+	            "Takes effect from the next race.");
+
+	if (CheckboxInt("Enable Drift class", &game.driftClass))
+	{
+		if (!game.driftClass && (game.engineClass == NATIVE_ENGINE_CLASS_DRIFT))
+		{
+			game.engineClass = NATIVE_ENGINE_CLASS_CHARACTER;
+		}
+		changed = true;
+	}
+	HelpTooltip("Adds Nitro-Fueled's Drift class to the engine classes: the tightest drifts of any class, paid for with slow "
+	            "acceleration and a little less grip outside drifts. Its stats are PowerSlide's own take, not Nitro-Fueled's.");
 
 	SectionHeading("Menus");
 

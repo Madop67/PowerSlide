@@ -156,6 +156,20 @@ enum NativeFastBoot
 	NATIVE_FAST_BOOT_COUNT
 };
 
+// game.engine_class: the engine class every human player's kart uses. Saved by name.
+enum NativeEngineClass
+{
+	// Each character's own class, as in retail.
+	NATIVE_ENGINE_CLASS_CHARACTER = 0,
+	NATIVE_ENGINE_CLASS_BALANCED,
+	NATIVE_ENGINE_CLASS_ACCELERATION,
+	NATIVE_ENGINE_CLASS_SPEED,
+	NATIVE_ENGINE_CLASS_TURNING,
+	// Nitro-Fueled's drift class; used only while game.drift_class is on.
+	NATIVE_ENGINE_CLASS_DRIFT,
+	NATIVE_ENGINE_CLASS_COUNT
+};
+
 // Shown as the menu's Tweaks tab; the settings file keeps the [game] section name.
 struct NativeGameSettings
 {
@@ -177,6 +191,10 @@ struct NativeGameSettings
 	int superHard;
 	int adventureDifficulty;
 	int turboCounter;
+	// Engine class for every human player's kart (NativeEngineClass), from the next race.
+	int engineClass;
+	// Makes Nitro-Fueled's drift class selectable as game.engine_class.
+	int driftClass;
 };
 
 struct NativeGlobalSettings
