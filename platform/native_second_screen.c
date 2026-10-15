@@ -74,6 +74,7 @@ struct NativeSecondScreenLapLog
 };
 
 global_variable struct NativeSecondScreenLapLog s_lapLog[NATIVE_SECOND_SCREEN_DRIVERS];
+CTR_STATIC_ASSERT(NATIVE_SECOND_SCREEN_DRIVERS >= NATIVE_MAX_DRIVERS);
 global_variable int s_lapLogLevel = -1;
 
 global_variable SDL_Window *s_window;
@@ -230,9 +231,10 @@ internal void NativeSecondScreen_OnBeforeDraw(struct GameTracker *gGT, struct Ga
 	const int mapReady = (meta != NULL) && (s_map.levelID == gGT->levelID) && (s_map.pixels != NULL) && !s_map.pending;
 	state->mapReady = mapReady;
 
-	for (int i = 0; i < NATIVE_SECOND_SCREEN_DRIVERS; i++)
+	// GAME_DRIVER_CAP is 24 in a big-field race, else 8.
+	for (int i = 0; i < GAME_DRIVER_CAP; i++)
 	{
-		const struct Driver *d = gGT->drivers[i];
+		const struct Driver *d = GAME_DRIVER(gGT, i);
 		if ((d == NULL) || (d->instSelf == NULL))
 		{
 			continue;
@@ -240,7 +242,7 @@ internal void NativeSecondScreen_OnBeforeDraw(struct GameTracker *gGT, struct Ga
 		struct NativeSecondScreenDriver *out = &state->drivers[state->driverCount++];
 		out->id = i;
 		out->human = (d->actionsFlagSet & ACTION_BOT) == 0;
-		out->characterId = (u16)GAME_CHARACTER_IDS[d->driverID] & 0xf;
+		out->characterId = (u16)GAME_DRIVER_CHARACTER_ID(d->driverID) & 0xf;
 		out->colour = data.colors[CRASH_BLUE + out->characterId][0] & 0xffffff;
 		NativeSecondScreen_CopyLng(out->name, sizeof(out->name), GAME_CHARACTER_METADATA[out->characterId].name_LNG_short);
 		out->rank = d->driverRank;
@@ -258,12 +260,12 @@ internal void NativeSecondScreen_OnBeforeDraw(struct GameTracker *gGT, struct Ga
 	}
 
 	int ordered = 0;
-	for (int i = 0; (i < NATIVE_SECOND_SCREEN_DRIVERS) && (ordered < state->driverCount); i++)
+	for (int i = 0; (i < GAME_DRIVER_CAP) && (ordered < state->driverCount); i++)
 	{
-		const struct Driver *d = gGT->driversInRaceOrder[i];
+		const struct Driver *d = GAME_DRIVER_IN_RACE_ORDER(gGT, i);
 		for (int k = 0; (d != NULL) && (k < state->driverCount); k++)
 		{
-			if (gGT->drivers[state->drivers[k].id] == d)
+			if (GAME_DRIVER(gGT, state->drivers[k].id) == d)
 			{
 				state->raceOrder[ordered++] = k;
 				break;

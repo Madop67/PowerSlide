@@ -17,7 +17,8 @@
 extern "C" {
 #endif
 
-#define NATIVE_SECOND_SCREEN_DRIVERS 8
+// Room for a big-field race (NATIVE_MAX_DRIVERS).
+#define NATIVE_SECOND_SCREEN_DRIVERS 24
 #define NATIVE_SECOND_SCREEN_LAPS    7
 #define NATIVE_SECOND_SCREEN_MARKERS 4
 // Race clock units per second (the game's SECOND).

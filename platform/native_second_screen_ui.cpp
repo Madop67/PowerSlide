@@ -96,8 +96,10 @@ void FormatDelta(char *out, size_t size, int units)
 
 const char *Ordinal(int rank)
 {
-	static const char *const kOrdinals[] = {"1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"};
-	return ((rank >= 0) && (rank < 8)) ? kOrdinals[rank] : "-";
+	// Up to 24th for big-field races.
+	static const char *const kOrdinals[] = {"1st",  "2nd",  "3rd",  "4th",  "5th",  "6th",  "7th",  "8th",  "9th",  "10th", "11th", "12th",
+	                                        "13th", "14th", "15th", "16th", "17th", "18th", "19th", "20th", "21st", "22nd", "23rd", "24th"};
+	return ((rank >= 0) && (rank < (int)SDL_arraysize(kOrdinals))) ? kOrdinals[rank] : "-";
 }
 
 const char *ItemName(int item)
@@ -159,6 +161,40 @@ const NativeSecondScreenDriver *PlayerOne(const NativeSecondScreenState &state)
 		}
 	}
 	return nullptr;
+}
+
+// Race-order positions the standings show. Up to 8 karts, all of them; a big field shows
+// the top 8, or the top 4 and the 4 around player one once they drop below 8th.
+int RaceRows(const NativeSecondScreenState &state, const NativeSecondScreenDriver *p1, int *rows)
+{
+	const int shown = 8;
+	int p1Pos = -1;
+	for (int i = 0; (p1 != nullptr) && (i < state.driverCount); i++)
+	{
+		if (&state.drivers[state.raceOrder[i]] == p1)
+		{
+			p1Pos = i;
+		}
+	}
+	int count = 0;
+	if ((state.driverCount <= shown) || (p1Pos < shown))
+	{
+		for (int i = 0; i < SDL_min(state.driverCount, shown); i++)
+		{
+			rows[count++] = i;
+		}
+		return count;
+	}
+	for (int i = 0; i < shown / 2; i++)
+	{
+		rows[count++] = i;
+	}
+	const int start = SDL_min(p1Pos - 1, state.driverCount - shown / 2);
+	for (int i = start; i < start + shown / 2; i++)
+	{
+		rows[count++] = i;
+	}
+	return count;
 }
 
 int CurrentPage(const NativeSecondScreenState &state)
@@ -325,11 +361,19 @@ void DrawRacePage(const Panel &panel, const NativeSecondScreenState &state, ImVe
 
 	// Player card along the bottom.
 	const float cardHeight = (p1 != nullptr) ? u * 3.4f : 0.0f;
-	const float rowHeight = SDL_min(u * 1.5f, (max.y - min.y - cardHeight) / (float)SDL_max(state.driverCount, 1));
+	int rows[NATIVE_SECOND_SCREEN_DRIVERS];
+	const int rowCount = RaceRows(state, p1, rows);
+	const float rowHeight = SDL_min(u * 1.5f, (max.y - min.y - cardHeight) / (float)SDL_max(rowCount, 1));
 	float y = min.y;
-	for (int i = 0; i < state.driverCount; i++, y += rowHeight)
+	for (int row = 0; row < rowCount; row++, y += rowHeight)
 	{
+		const int i = rows[row];
 		const NativeSecondScreenDriver &d = state.drivers[state.raceOrder[i]];
+		if ((row > 0) && (rows[row - 1] != i - 1))
+		{
+			// Positions skipped above this row.
+			panel.draw->AddLine(ImVec2(min.x + u, y), ImVec2(max.x - u, y), kMutedText, SDL_max(u * 0.08f, 1.0f));
+		}
 		const ImVec2 rowMin(min.x, y + rowHeight * 0.06f);
 		const ImVec2 rowMax(max.x, y + rowHeight * 0.94f);
 		panel.draw->AddRectFilled(rowMin, rowMax, d.human ? kBlue : kFrame, u * 0.35f);
