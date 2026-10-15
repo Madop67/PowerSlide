@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
+
+# NOTE: Must be set before project(). Also the app bundle's LSMinimumSystemVersion.
+if(CMAKE_HOST_APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version" FORCE)
+endif()
+
 project(CTR-Native C CXX)
 include(CheckCCompilerFlag)
 
@@ -10,6 +16,14 @@ if(APPLE)
     option(CTR_NATIVE_SANDBOX "Build the game as a wasm32 sandbox (required on macOS)" ON)
 else()
     option(CTR_NATIVE_SANDBOX "Build the game as a wasm32 sandbox (required on macOS)" OFF)
+endif()
+
+# First-run disc setup and a per-user data folder for packaged builds
+# (platform/setup/). The macOS app bundle has its own AppKit setup window.
+if(WIN32 OR (CTR_NATIVE_SANDBOX AND NOT APPLE))
+    option(CTR_NATIVE_SETUP "Build first-run disc setup into the executable" ON)
+else()
+    option(CTR_NATIVE_SETUP "Build first-run disc setup into the executable" OFF)
 endif()
 
 if(NOT CTR_NATIVE_SANDBOX AND NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
@@ -26,9 +40,13 @@ if(CMAKE_C_COMPILER_ID STREQUAL "MSVC" OR CMAKE_C_SIMULATE_ID STREQUAL "MSVC")
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE NEVER)
+# NOTE: Android keeps the NDK toolchain's search modes, so the cross-build
+# never picks up the build machine's libraries.
+if(NOT ANDROID)
+    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE NEVER)
+    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY NEVER)
+    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE NEVER)
+endif()
 
 execute_process(
     COMMAND git rev-parse --short=12 HEAD
@@ -75,14 +93,28 @@ set(SDL_TESTS OFF CACHE BOOL "" FORCE)
 set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
 set(SDL_GPU OFF CACHE BOOL "" FORCE)
-set(SDL_RENDER OFF CACHE BOOL "" FORCE)
 set(SDL_CAMERA OFF CACHE BOOL "" FORCE)
 set(SDL_SENSOR OFF CACHE BOOL "" FORCE)
-set(SDL_DIALOG OFF CACHE BOOL "" FORCE)
 set(SDL_TRAY OFF CACHE BOOL "" FORCE)
 set(SDL_POWER OFF CACHE BOOL "" FORCE)
 set(SDL_VULKAN OFF CACHE BOOL "" FORCE)
-set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
+# NOTE: Disc setup uses SDL's file dialog and draws its progress window with
+# SDL_Renderer (software or OpenGL only).
+set(SDL_DIALOG ${CTR_NATIVE_SETUP} CACHE BOOL "" FORCE)
+set(SDL_RENDER ${CTR_NATIVE_SETUP} CACHE BOOL "" FORCE)
+set(SDL_RENDER_D3D OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER_D3D11 OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER_D3D12 OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER_METAL OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER_VULKAN OFF CACHE BOOL "" FORCE)
+# Android has OpenGL ES only; the wasm host maps the game's GL 3.3 onto it.
+if(ANDROID)
+    set(SDL_OPENGLES ON CACHE BOOL "" FORCE)
+    # SDL's Java side reaches USB controllers; no libusb in the APK.
+    set(SDL_HIDAPI_LIBUSB OFF CACHE BOOL "" FORCE)
+else()
+    set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
+endif()
 set(SDL_OFFSCREEN OFF CACHE BOOL "" FORCE)
 set(SDL_SNDIO OFF CACHE BOOL "" FORCE)
 set(SDL_SNDIO_SHARED OFF CACHE BOOL "" FORCE)
@@ -108,6 +140,21 @@ endwhile()
 string(APPEND ctr_ui_font_source "};\n")
 file(WRITE ${CMAKE_BINARY_DIR}/generated/native_ui_font.h.tmp "${ctr_ui_font_source}")
 configure_file(${CMAKE_BINARY_DIR}/generated/native_ui_font.h.tmp ${CMAKE_BINARY_DIR}/generated/native_ui_font.h COPYONLY)
+
+# libchdr decodes .chd disc images during first-run setup (never in the game).
+if(CTR_NATIVE_SETUP OR CTR_NATIVE_SANDBOX)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(INSTALL_STATIC_LIBS OFF CACHE BOOL "" FORCE)
+    set(WITH_SYSTEM_ZLIB OFF CACHE BOOL "" FORCE)
+    set(WITH_SYSTEM_ZSTD OFF CACHE BOOL "" FORCE)
+    set(CHDR_WANT_TESTS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(externals/libchdr EXCLUDE_FROM_ALL)
+endif()
+
+set(CTR_SETUP_SOURCES
+    platform/setup/disc_import.c
+    platform/setup/native_setup.c
+)
 
 if(CTR_NATIVE_SANDBOX)
     include(cmake/ctr_wasm_sandbox.cmake)
@@ -147,8 +194,25 @@ target_link_libraries(ctr_native_ui PUBLIC SDL3::SDL3 ${CMAKE_DL_LIBS})
 # CTR Native
 add_executable(ctr_native main.c)
 if(WIN32)
-    # Executable icon for Explorer and shortcuts.
+    # Executable icon for Explorer and shortcuts, and the manifest (UTF-8 code page).
     target_sources(ctr_native PRIVATE platform/windows/ctr_native.rc)
+    set_property(SOURCE platform/windows/ctr_native.rc APPEND PROPERTY OBJECT_DEPENDS
+        ${CMAKE_SOURCE_DIR}/platform/windows/ctr_native.manifest
+        ${CMAKE_SOURCE_DIR}/platform/windows/powerslide.ico
+    )
+
+    # A GUI program, so double-clicking it opens no console window. main.c
+    # attaches to the parent console when started from a terminal.
+    set_target_properties(ctr_native PROPERTIES WIN32_EXECUTABLE ON)
+    if(CTR_NATIVE_MSVC_FRONTEND)
+        target_link_options(ctr_native PRIVATE /ENTRY:mainCRTStartup /MANIFEST:NO)
+    endif()
+endif()
+if(CTR_NATIVE_SETUP)
+    target_sources(ctr_native PRIVATE ${CTR_SETUP_SOURCES})
+    target_compile_definitions(ctr_native PRIVATE CTR_NATIVE_SETUP)
+    target_include_directories(ctr_native PRIVATE ${CMAKE_SOURCE_DIR}/platform)
+    target_link_libraries(ctr_native chdr-static)
 endif()
 set_target_properties(ctr_native PROPERTIES
     C_STANDARD 17
@@ -212,6 +276,15 @@ if(BUILD_TESTING)
     set_tests_properties(ctr_native_version PROPERTIES PASS_REGULAR_EXPRESSION "^PowerSlide ")
 
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+    # Release executables must not need any library a player would have to
+    # install (CRT, SDL, libchdr, ...).
+    if(WIN32)
+        add_test(
+            NAME ctr_native_standalone
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/release/check_standalone.py $<TARGET_FILE:ctr_native>
+        )
+    endif()
     add_test(
         NAME ctr_match_unit
         COMMAND ${Python3_EXECUTABLE} -m unittest discover

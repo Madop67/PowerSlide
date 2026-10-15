@@ -30,6 +30,10 @@
 
 #include <platform.h>
 
+#if defined(CTR_NATIVE_SETUP)
+#include "setup/native_setup.h"
+#endif
+
 #include "game/game_unity.h"
 
 #include "game/zGlobal_RDATA.c"
@@ -124,8 +128,50 @@ static int NativeConsole_ShouldPauseOnError(void)
 #endif
 }
 
+#if defined(_WIN32) && !defined(CTR_NATIVE_WASM)
+// The exe is a GUI program, so a double-click opens no console window. Started
+// from a terminal, it writes to that terminal; pipes (ctest, replay_suite.py)
+// are inherited and used as they are.
+static void NativeConsole_Attach(void)
+{
+	HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+
+	if ((output != NULL) && (output != INVALID_HANDLE_VALUE))
+	{
+		return;
+	}
+
+	if (AttachConsole(ATTACH_PARENT_PROCESS))
+	{
+		(void)freopen("CONOUT$", "w", stdout);
+		(void)freopen("CONOUT$", "w", stderr);
+		(void)freopen("CONIN$", "r", stdin);
+	}
+}
+#endif
+
+#if defined(CTR_NATIVE_SETUP)
+// Set when a packaged build runs from its per-user data folder; errors then
+// also show a message box, since there is no console to read.
+static char s_nativeSetupLogPath[4096];
+static int s_nativeSetupInstalled;
+#endif
+
 static s32 NativeConsole_Return(const u32 result)
 {
+#if defined(CTR_NATIVE_SETUP)
+	if ((result != 0) && s_nativeSetupInstalled)
+	{
+		char message[256];
+
+		fflush(stdout);
+		fflush(stderr);
+		snprintf(message, sizeof(message), "The game quit with an error (code %u). The log file may say why.", (unsigned int)result);
+		NativeSetup_ShowFatal(message, (s_nativeSetupLogPath[0] != '\0') ? s_nativeSetupLogPath : NULL);
+		return (s32)result;
+	}
+#endif
+
 	if ((result != 0) && NativeConsole_ShouldPauseOnError())
 	{
 		fflush(stdout);
@@ -159,6 +205,17 @@ static int NativeArg_IsPresent(int argc, char *argv[], const char *name)
 	return 0;
 }
 
+static const char *NativeArg_GetValue(int argc, char *argv[], const char *name)
+{
+	for (int argIndex = 1; argIndex + 1 < argc; argIndex++)
+	{
+		if (strcmp(argv[argIndex], name) == 0)
+		{
+			return argv[argIndex + 1];
+		}
+	}
+	return NULL;
+}
 
 int main(int argc, char *argv[])
 {
@@ -171,6 +228,33 @@ int main(int argc, char *argv[])
 		}
 	}
 
+#if defined(_WIN32) && !defined(CTR_NATIVE_WASM)
+	NativeConsole_Attach();
+#endif
+
+	// --base-dir replaces the executable's folder as the home of assets/,
+	// settings, memory cards and the log (the macOS app bundle passes its
+	// Application Support folder).
+	const char *basePath = NativeArg_GetValue(argc, argv, "--base-dir");
+
+#if defined(CTR_NATIVE_SETUP)
+	// A packaged build with no assets/ next to it (or above it, as in a
+	// checkout) runs from its per-user data folder, after first-run setup.
+	static char setupBaseDir[4096];
+	if ((basePath == NULL) && !NativeSetup_FindPortableBase(setupBaseDir, sizeof(setupBaseDir)))
+	{
+		if (!NativeSetup_Run(setupBaseDir, sizeof(setupBaseDir), NativeArg_IsPresent(argc, argv, "--setup")))
+		{
+			return 0;
+		}
+
+		NativeSetup_RedirectConsole(setupBaseDir, s_nativeSetupLogPath, sizeof(s_nativeSetupLogPath));
+		NativeSetup_InstallCrashHandler(s_nativeSetupLogPath);
+		s_nativeSetupInstalled = 1;
+		basePath = setupBaseDir;
+	}
+#endif
+
 	printf("[CTR Native] Starting...\n");
 	fflush(stdout);
 
@@ -178,7 +262,12 @@ int main(int argc, char *argv[])
 	printf("[CTR Native] SDL base path: %s\n", sdlBasePath ? sdlBasePath : "(null)");
 	fflush(stdout);
 
-	if (!NativeAssets_Init(sdlBasePath))
+	if (basePath == NULL)
+	{
+		basePath = sdlBasePath;
+	}
+
+	if (!NativeAssets_Init(basePath))
 	{
 		fprintf(stderr, "[CTR Native] Failed to initialize asset paths.\n");
 		return NativeConsole_Return(1);
@@ -266,6 +355,16 @@ int main(int argc, char *argv[])
 	(void)argc;
 	(void)argv;
 #endif
+
+	// Packaged launches (the hosts pass --packaged) can ask for a new disc image.
+	if (NativeArg_IsPresent(argc, argv, "--packaged")
+#if defined(CTR_NATIVE_SETUP)
+	    || s_nativeSetupInstalled
+#endif
+	)
+	{
+		NativeUI_EnableDiscChange();
+	}
 
 	NativeHooks_RegisterModules();
 

@@ -6,4 +6,8 @@
 // Captures argv/environ for the guest and preopens "/" as WASI fd 3.
 void HostWasi_Init(int argc, char **argv);
 
+// Called with the guest's exit code before the process exits on a non-zero
+// proc_exit (the app bundle uses it to show an error instead of vanishing).
+void HostWasi_SetExitHandler(void (*handler)(int code));
+
 #endif

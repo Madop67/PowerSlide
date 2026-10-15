@@ -1,0 +1,85 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The product version comes from the top-level CMakeLists.txt, like the
+// desktop packages. versionCode is MMmmpp plus two digits that order
+// pre-releases before the release: 0.1.0-beta.7.1 -> 10071, 0.1.0 -> 10099.
+def ctrVersion = (file('../../CMakeLists.txt').text =~ /set\(CTR_NATIVE_VERSION "([^"]+)"\)/)[0][1]
+def ctrNumbers = (ctrVersion =~ /\d+/).collect { it as int } + [0, 0, 0, 0, 0]
+def ctrPrerelease = ctrVersion.contains('-') ? Math.min(ctrNumbers[3] * 10 + ctrNumbers[4], 98) : 99
+def ctrVersionCode = ((ctrNumbers[0] * 100 + ctrNumbers[1]) * 100 + ctrNumbers[2]) * 100 + ctrPrerelease
+
+// Release signing: ANDROID_KEYSTORE (+ _PASSWORD, ANDROID_KEY_ALIAS,
+// ANDROID_KEY_PASSWORD) when set, otherwise the debug key (fine to sideload).
+def releaseKeystore = System.getenv('ANDROID_KEYSTORE')
+
+android {
+    namespace 'io.github.madop67.powerslide'
+    compileSdk 36
+    // NOTE: build-android.sh passes the NDK it found (-PctrNdkVersion).
+    ndkVersion project.findProperty('ctrNdkVersion') ?: '28.2.13676358'
+
+    defaultConfig {
+        applicationId 'io.github.madop67.powerslide'
+        minSdk 24
+        targetSdk 36
+        versionCode ctrVersionCode
+        versionName ctrVersion
+
+        externalNativeBuild {
+            cmake {
+                arguments '-DCTR_NATIVE_SANDBOX=ON',
+                          '-DBUILD_TESTING=OFF',
+                          '-DANDROID_STL=c++_static',
+                          '-DCMAKE_BUILD_TYPE=Release'
+                targets 'ctr_native'
+            }
+        }
+        ndk {
+            // x86_64 runs on emulators and Chromebooks.
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
+    }
+
+    signingConfigs {
+        if (releaseKeystore) {
+            release {
+                storeFile file(releaseKeystore)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig releaseKeystore ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('../../CMakeLists.txt')
+            version project.findProperty('ctrCmakeVersion') ?: '3.22.1'
+        }
+    }
+
+    // SDL's Java side, used straight from the vendored SDL.
+    sourceSets {
+        main {
+            java.srcDirs += ['../../externals/SDL/android-project/app/src/main/java']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    lint {
+        abortOnError false
+    }
+}

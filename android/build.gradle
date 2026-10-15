@@ -1,0 +1,6 @@
+// PowerSlide for Android: the wasm sandbox build (see cmake/ctr_wasm_sandbox.cmake)
+// as libmain.so inside SDL's SDLActivity. ../build-android.sh drives it.
+
+plugins {
+    id 'com.android.application' version '8.13.2' apply false
+}

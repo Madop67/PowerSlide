@@ -28,6 +28,8 @@ int NativeUI_MenuOwnsKeyboard(void);
 unsigned int NativeUI_GetMenuController(void);
 // True while the input tab waits for a key or button to bind; menu hotkeys pause meanwhile.
 int NativeUI_IsCapturingBinding(void);
+// Packaged builds (first-run disc setup): shows "Change disc image..." in the About tab.
+void NativeUI_EnableDiscChange(void);
 
 // Platform callback: shows the cursor while the menu is open, hides it in fullscreen otherwise.
 void Platform_UpdateCursorVisibility(void);

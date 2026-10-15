@@ -9,6 +9,9 @@ from that file:
 
   platform/native_branding_data.h   menu logo and window icon, embedded in the game
   platform/windows/powerslide.ico   Windows executable icon
+  platform/macos/PowerSlide.icns    macOS app bundle icon
+  android/app/src/main/res/mipmap-* Android launcher icon (adaptive, plus a
+                                    legacy tile for Android 7)
 
 Needs Pillow (pip install pillow). Run it again after changing the logo and
 commit the outputs; the build does not run it.
@@ -17,12 +20,16 @@ commit the outputs; the build does not run it.
 import argparse
 import os
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 LOGO_PATH = os.path.join(ROOT, "docs", "images", "powerslide-logo.png")
 HEADER_PATH = os.path.join(ROOT, "platform", "native_branding_data.h")
 ICO_PATH = os.path.join(ROOT, "platform", "windows", "powerslide.ico")
+ICNS_PATH = os.path.join(ROOT, "platform", "macos", "PowerSlide.icns")
+ANDROID_RES = os.path.join(ROOT, "android", "app", "src", "main", "res")
+# Launcher icon density buckets: 48 dp legacy icon, 108 dp adaptive layer.
+ANDROID_DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0, "xxhdpi": 3.0, "xxxhdpi": 4.0}
 
 # Menu logo height in pixels; the menu draws it at up to about this size.
 MENU_LOGO_HEIGHT = 112
@@ -90,6 +97,55 @@ def make_icon(logo, size):
     icon = Image.new("RGBA", (size, size))
     icon.paste(pair, ((size - pair.width) // 2, (size - pair.height) // 2))
     return icon
+
+
+def make_mac_icon(logo, size=1024):
+    """The "PS" icon on a white rounded tile, sized like Apple's macOS app icon grid."""
+    tile = round(size * 824 / 1024)
+    radius = round(tile * 0.225)
+    origin = (size - tile) // 2
+
+    shadow = Image.new("RGBA", (size, size))
+    box = (origin, origin + round(size * 0.01), origin + tile, origin + tile + round(size * 0.01))
+    ImageDraw.Draw(shadow).rounded_rectangle(box, radius, fill=(0, 0, 0, 90))
+    icon = shadow.filter(ImageFilter.GaussianBlur(size * 0.012))
+
+    ImageDraw.Draw(icon).rounded_rectangle((origin, origin, origin + tile, origin + tile), radius, fill=(255, 255, 255, 255))
+    letters = make_icon(logo, round(tile * 0.72))
+    offset = (size - letters.width) // 2
+    icon.alpha_composite(letters, (offset, offset))
+    return icon
+
+
+def make_android_foreground(logo, size):
+    """Adaptive icon foreground: the "PS" icon inside the 66 dp safe zone of 108 dp."""
+    letters = make_icon(logo, round(size * 56 / 108))
+    layer = Image.new("RGBA", (size, size))
+    offset = (size - letters.width) // 2
+    layer.alpha_composite(letters, (offset, offset))
+    return layer
+
+
+def make_android_legacy(logo, size):
+    """Pre-adaptive (Android 7) launcher icon: the "PS" icon on a white rounded tile."""
+    scale = 4
+    big = size * scale
+    margin = round(big * 2 / 48)
+    icon = Image.new("RGBA", (big, big))
+    ImageDraw.Draw(icon).rounded_rectangle((margin, margin, big - margin, big - margin), round(big * 0.18), fill=(255, 255, 255, 255))
+    letters = make_icon(logo, round(big * 0.66))
+    offset = (big - letters.width) // 2
+    icon.alpha_composite(letters, (offset, offset))
+    return icon.resize((size, size), Image.LANCZOS)
+
+
+def write_android_icons(logo):
+    for density, scale in ANDROID_DENSITIES.items():
+        folder = os.path.join(ANDROID_RES, "mipmap-" + density)
+        os.makedirs(folder, exist_ok=True)
+        make_android_legacy(logo, round(48 * scale)).save(os.path.join(folder, "ic_launcher.png"), optimize=True)
+        make_android_foreground(logo, round(108 * scale)).save(os.path.join(folder, "ic_launcher_foreground.png"), optimize=True)
+    print("wrote", os.path.relpath(os.path.join(ANDROID_RES, "mipmap-*"), ROOT))
 
 
 def brand_palette(image):
@@ -183,6 +239,12 @@ def main():
     os.makedirs(os.path.dirname(ICO_PATH), exist_ok=True)
     make_icon(logo, 256).save(ICO_PATH, sizes=[(s, s) for s in ICO_SIZES])
     print("wrote", os.path.relpath(ICO_PATH, ROOT))
+
+    os.makedirs(os.path.dirname(ICNS_PATH), exist_ok=True)
+    make_mac_icon(logo).save(ICNS_PATH)
+    print("wrote", os.path.relpath(ICNS_PATH, ROOT))
+
+    write_android_icons(logo)
 
 
 if __name__ == "__main__":
