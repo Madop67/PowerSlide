@@ -1495,6 +1495,13 @@ bool DrawTweaksGeneral()
 	HelpTooltip("Adds Nitro-Fueled's Drift class to the engine classes: the tightest drifts of any class, paid for with slow "
 	            "acceleration and a little less grip outside drifts. Its stats are PowerSlide's own take, not Nitro-Fueled's.");
 
+	SectionHeading("Races");
+
+	changed |= CheckboxInt("24-kart races", &game.bigField);
+	HelpTooltip("Single-player arcade and adventure races start with 24 karts, 23 of them opponents, instead of 8. "
+	            "Boss races, the purple gem cup, time trial, relic races, battle and multiplayer keep retail's field. "
+	            "Takes effect from the next race.");
+
 	SectionHeading("Menus");
 
 	videoChanged |= CheckboxInt("Full-colour pause screen", &video.pauseFullColor);

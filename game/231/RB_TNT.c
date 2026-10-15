@@ -274,7 +274,7 @@ void RB_TNT_ThTick_ThrowOnHead(struct Thread *t)
 	{
 		array = &s_tntTables[0x5a * 2];
 
-		distHead = array[GAME_CHARACTER_IDS[mw->driverTarget->driverID]];
+		distHead = array[GAME_DRIVER_CHARACTER_ID(mw->driverTarget->driverID)];
 
 		// if TNT landed on head
 		if ((mw->deltaPos.y < distHead) && (mw->deltaPos.y = distHead, inst->scale.x == 0x800))

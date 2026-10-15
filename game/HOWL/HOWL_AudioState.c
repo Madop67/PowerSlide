@@ -245,9 +245,9 @@ void Audio_Update1(void)
 
 		// human driver in the lead
 		gGT = GAME_TRACKER;
-		for (i = 0; i < 8; i++)
+		for (i = 0; i < GAME_DRIVER_CAP; i++)
 		{
-			candidate = gGT->driversInRaceOrder[i];
+			candidate = GAME_DRIVER_IN_RACE_ORDER(gGT, i);
 
 			if ((candidate != NULL) && ((candidate->actionsFlagSet & ACTION_BOT) == 0))
 			{
@@ -286,9 +286,9 @@ void Audio_Update1(void)
 
 		// human driver in the lead
 		gGT = GAME_TRACKER;
-		for (i = 0; i < 8; i++)
+		for (i = 0; i < GAME_DRIVER_CAP; i++)
 		{
-			candidate = gGT->driversInRaceOrder[i];
+			candidate = GAME_DRIVER_IN_RACE_ORDER(gGT, i);
 
 			if ((candidate != NULL) && ((candidate->actionsFlagSet & ACTION_BOT) == 0))
 			{
@@ -360,9 +360,9 @@ void Audio_Update1(void)
 
 		// human driver in the lead
 		gGT = GAME_TRACKER;
-		for (i = 0; i < 8; i++)
+		for (i = 0; i < GAME_DRIVER_CAP; i++)
 		{
-			candidate = gGT->driversInRaceOrder[i];
+			candidate = GAME_DRIVER_IN_RACE_ORDER(gGT, i);
 
 			if ((candidate != NULL) && ((candidate->actionsFlagSet & ACTION_BOT) == 0))
 			{
@@ -399,9 +399,9 @@ void Audio_Update1(void)
 
 		// human driver in the lead
 		gGT = GAME_TRACKER;
-		for (i = 0; i < 8; i++)
+		for (i = 0; i < GAME_DRIVER_CAP; i++)
 		{
-			candidate = gGT->driversInRaceOrder[i];
+			candidate = GAME_DRIVER_IN_RACE_ORDER(gGT, i);
 
 			if ((candidate != NULL) && (candidate->instSelf->thread->modelIndex == DYNAMIC_PLAYER))
 			{

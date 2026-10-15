@@ -90,8 +90,26 @@ internal s32 NativeSaveState_PreparePayload(void)
 	return 1;
 }
 
+// A big-field race keeps its pools in the big field's arena, which quick states
+// don't capture; they only work in retail-sized races.
+internal s32 NativeSaveState_BigFieldBlocks(const char *what)
+{
+	if (NATIVE_BIG_FIELD_ON())
+	{
+		Platform_Log("[CTR State] quick %s is not available in 24-kart races\n", what);
+		return 1;
+	}
+
+	return 0;
+}
+
 internal s32 NativeSaveState_SaveQuick(void)
 {
+	if (NativeSaveState_BigFieldBlocks("save"))
+	{
+		return 0;
+	}
+
 	if (!NativeSaveState_PrepareDir())
 	{
 		Platform_Log("[CTR State] failed to create quick state directory: %s\n", NATIVE_SAVESTATE_DIR);
@@ -122,6 +140,11 @@ internal s32 NativeSaveState_SaveQuick(void)
 internal s32 NativeSaveState_LoadQuick(void)
 {
 	struct NativeCheckpointFileRecordInfo info;
+
+	if (NativeSaveState_BigFieldBlocks("load"))
+	{
+		return 0;
+	}
 
 	if (!NativeSaveState_PreparePayload())
 	{

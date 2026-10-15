@@ -1713,11 +1713,25 @@ void VehPhysGeneral_SetHeldItem(struct Driver *driver)
 		}
 		else
 		{
+#if defined(CTR_NATIVE)
+			// A big field rolls from 1P arcade's item sets, its 24 places spread over
+			// the 8 they were made for.
+			if (NATIVE_BIG_FIELD_ON())
+			{
+				mode = 8;
+			}
+#endif
 			switch (mode)
 			{
 			// 1P Arcade
 			case 8:
 				onePlayerRank = driver->driverRank;
+#if defined(CTR_NATIVE)
+				if (NATIVE_BIG_FIELD_ON())
+				{
+					onePlayerRank = (driver->driverRank * NATIVE_RETAIL_DRIVERS) / NATIVE_DRIVER_CAP;
+				}
+#endif
 
 				// if in 2nd place, get itemSet2
 				if (onePlayerRank == 1)
@@ -2098,7 +2112,7 @@ int VehPhysGeneral_GetBaseSpeed(struct Driver *driver)
 	if (d->clockReceive != 0)
 	{
 		clockEffect =
-		    CTR_MipsSra(CTR_MipsMulLo(d->const_DamagedSpeed, CTR_MipsSubLo(VEH_BASE_SPEED_CLOCK_RANK_BASE, d->driverRank)), VEH_BASE_SPEED_CLOCK_DAMAGE_SHIFT);
+		    CTR_MipsSra(CTR_MipsMulLo(d->const_DamagedSpeed, CTR_MipsSubLo(VEH_BASE_SPEED_CLOCK_RANK_BASE, GAME_RANK8(d->driverRank))), VEH_BASE_SPEED_CLOCK_DAMAGE_SHIFT);
 		if (subtract < clockEffect)
 		{
 			subtract = clockEffect;

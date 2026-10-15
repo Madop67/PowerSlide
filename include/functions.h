@@ -297,6 +297,9 @@ void INSTANCE_LevInitAll(struct InstDef *definitions, s32 count);
 int JitPool_Add(struct JitPool *AP);
 void JitPool_Clear(struct JitPool *AP);
 void JitPool_Init(struct JitPool *AP, int maxItems, int itemSize, char *name);
+#if defined(CTR_NATIVE)
+void JitPool_InitFromBuffer(struct JitPool *AP, int maxItems, int itemSize, void *buffer, char *name);
+#endif
 void JitPool_Remove(struct JitPool *AP, struct Item *item);
 
 // LevInstDef
@@ -369,6 +372,9 @@ void LOAD_NextQueuedFile(void);
 
 void MainDB_OTMem(struct OTMem *otMem, u32 size);
 void MainDB_PrimMem(struct PrimMem *primMem, u32 size);
+#if defined(CTR_NATIVE)
+void MainDB_PrimMemFromBuffer(struct PrimMem *primMem, u32 size, void *buffer);
+#endif
 
 void MainDrawCb_Vsync(void);
 void MainDrawCb_DrawSync(void);

@@ -1,5 +1,12 @@
 #include "VehCommon.h"
 
+// Drivers a missile or clock can target: retail's 8, or a big field's 24 on native.
+#if defined(CTR_NATIVE)
+#define VEH_PICKUP_DRIVERS NATIVE_DRIVER_CAP
+#else
+#define VEH_PICKUP_DRIVERS 8
+#endif
+
 typedef s16 VehPickupItemSignedHalfword CTR_MAY_ALIAS;
 
 // NOTE(aalhendi): Retail copies matrices as eight words. Native keeps the
@@ -177,7 +184,7 @@ CTR_STATIC_ASSERT((u32)INVISIBILITY_CLEAR_DRAW_FLAGS == 0xfff8ffffu);
 
 b32 VehPickupItem_MaskBoolGoodGuy(struct Driver *d)
 {
-	s32 charID = GAME_CHARACTER_IDS[d->driverID];
+	s32 charID = GAME_DRIVER_CHARACTER_ID(d->driverID);
 	b32 isGoodGuy = false;
 
 	// Crash, Coco, Pura, Polar, Penta
@@ -397,7 +404,7 @@ struct Driver *VehPickupItem_MissileGetTargetDriver(struct Driver *driver)
 	screenPositionPtr = &projection.screenPosition;
 	do
 	{
-		struct Driver *candidate = GAME_TRACKER->drivers[i];
+		struct Driver *candidate = GAME_DRIVER(GAME_TRACKER, i);
 		s32 dx;
 		s32 dz;
 		s32 distance;
@@ -500,7 +507,7 @@ struct Driver *VehPickupItem_MissileGetTargetDriver(struct Driver *driver)
 			closestDistance = distance;
 			target = candidate;
 		}
-	} while (++i < MISSILE_TARGET_DRIVER_COUNT);
+	} while (++i < VEH_PICKUP_DRIVERS);
 
 	return target;
 }
@@ -658,9 +665,9 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 			{
 				int i;
 
-				for (i = 0; i < MISSILE_TARGET_DRIVER_COUNT; i++)
+				for (i = 0; i < VEH_PICKUP_DRIVERS; i++)
 				{
-					struct Driver *candidate = GAME_TRACKER->drivers[i];
+					struct Driver *candidate = GAME_DRIVER(GAME_TRACKER, i);
 #ifdef CTR_NATIVE
 					int distX;
 					int distZ;
@@ -727,7 +734,7 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 
 				if ((rank != 0) && ((GAME_TRACKER->elapsedEventTime & MISSILE_RACE_FALLBACK_EVENT_MASK) != 0))
 				{
-					victim = GAME_TRACKER->driversInRaceOrder[rank - 1];
+					victim = GAME_DRIVER_IN_RACE_ORDER(GAME_TRACKER, rank - 1);
 				}
 			}
 		}
@@ -786,7 +793,7 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 			PlaySound3D(SOUND_BOMB_LAUNCH, weaponInst);
 			if ((d->actionsFlagSet & ACTION_BOT) == 0)
 			{
-				Voiceline_RequestPlay(VOICELINE_BOMB_LAUNCH, GAME_CHARACTER_IDS[d->driverID], VOICELINE_WEAPON_PRIORITY);
+				Voiceline_RequestPlay(VOICELINE_BOMB_LAUNCH, GAME_DRIVER_CHARACTER_ID(d->driverID), VOICELINE_WEAPON_PRIORITY);
 			}
 		}
 		else
@@ -808,7 +815,7 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 			PlaySound3D(SOUND_MISSILE_LAUNCH, weaponInst);
 			if ((d->actionsFlagSet & ACTION_BOT) == 0)
 			{
-				Voiceline_RequestPlay(VOICELINE_MISSILE_LAUNCH, GAME_CHARACTER_IDS[d->driverID], VOICELINE_WEAPON_PRIORITY);
+				Voiceline_RequestPlay(VOICELINE_MISSILE_LAUNCH, GAME_DRIVER_CHARACTER_ID(d->driverID), VOICELINE_WEAPON_PRIORITY);
 			}
 		}
 
@@ -865,22 +872,22 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 
 		if ((d->actionsFlagSet & ACTION_BOT) == 0)
 		{
-			Voiceline_RequestPlay(VOICELINE_CLOCK, GAME_CHARACTER_IDS[d->driverID], VOICELINE_WEAPON_PRIORITY);
+			Voiceline_RequestPlay(VOICELINE_CLOCK, GAME_DRIVER_CHARACTER_ID(d->driverID), VOICELINE_WEAPON_PRIORITY);
 		}
 
-		for (i = 0; i < CLOCK_DRIVER_COUNT; i++)
+		for (i = 0; i < VEH_PICKUP_DRIVERS; i++)
 		{
 			struct Driver *victim;
 
 #ifdef CTR_NATIVE
 			// NOTE(aalhendi): Retail writes before its null check; native must skip empty driver slots.
-			if (GAME_TRACKER->drivers[i] == 0)
+			if (GAME_DRIVER(GAME_TRACKER, i) == 0)
 			{
 				continue;
 			}
 #endif
-			GAME_TRACKER->drivers[i]->clockFlash = CLOCK_FLASH_FRAMES;
-			victim = GAME_TRACKER->drivers[i];
+			GAME_DRIVER(GAME_TRACKER, i)->clockFlash = CLOCK_FLASH_FRAMES;
+			victim = GAME_DRIVER(GAME_TRACKER, i);
 			if (victim == 0)
 			{
 				continue;
@@ -891,11 +898,11 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 				{
 					if (d->numWumpas >= DRIVER_WUMPA_JUICED_COUNT)
 					{
-						GAME_TRACKER->drivers[i]->clockReceive = CLOCK_HURT_DURATION_JUICED;
+						GAME_DRIVER(GAME_TRACKER, i)->clockReceive = CLOCK_HURT_DURATION_JUICED;
 					}
 					else
 					{
-						GAME_TRACKER->drivers[i]->clockReceive = CLOCK_HURT_DURATION_NORMAL;
+						GAME_DRIVER(GAME_TRACKER, i)->clockReceive = CLOCK_HURT_DURATION_NORMAL;
 					}
 				}
 			}
@@ -1037,7 +1044,7 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 		// if human and not AI (AIs can not use Warpball)
 		if ((d->actionsFlagSet & ACTION_BOT) == 0)
 		{
-			Voiceline_RequestPlay(VOICELINE_WARPBALL, GAME_CHARACTER_IDS[d->driverID], VOICELINE_WEAPON_PRIORITY);
+			Voiceline_RequestPlay(VOICELINE_WARPBALL, GAME_DRIVER_CHARACTER_ID(d->driverID), VOICELINE_WEAPON_PRIORITY);
 		}
 
 		tw = weaponInst->thread->object;
@@ -1047,7 +1054,7 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 		victim = 0;
 		if (d->driverRank != 0)
 		{
-			victim = GAME_TRACKER->driversInRaceOrder[d->driverRank - 1];
+			victim = GAME_DRIVER_IN_RACE_ORDER(GAME_TRACKER, d->driverRank - 1);
 		}
 		tw->driverTarget = victim;
 
@@ -1178,7 +1185,7 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 
 		if ((d->actionsFlagSet & ACTION_BOT) == 0)
 		{
-			Voiceline_RequestPlay(VOICELINE_MINE_DROP, GAME_CHARACTER_IDS[d->driverID], VOICELINE_WEAPON_PRIORITY);
+			Voiceline_RequestPlay(VOICELINE_MINE_DROP, GAME_DRIVER_CHARACTER_ID(d->driverID), VOICELINE_WEAPON_PRIORITY);
 		}
 
 		mw = weaponInst->thread->object;
@@ -1369,7 +1376,7 @@ void VehPickupItem_ShootNow(struct Driver *d, s32 weaponID, s32 flags)
 
 		if ((d->actionsFlagSet & ACTION_BOT) == 0)
 		{
-			Voiceline_RequestPlay(VOICELINE_MINE_DROP, GAME_CHARACTER_IDS[d->driverID], VOICELINE_WEAPON_PRIORITY);
+			Voiceline_RequestPlay(VOICELINE_MINE_DROP, GAME_DRIVER_CHARACTER_ID(d->driverID), VOICELINE_WEAPON_PRIORITY);
 		}
 
 		RB_MinePool_Add(mw);

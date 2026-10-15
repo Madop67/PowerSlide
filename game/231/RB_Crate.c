@@ -482,7 +482,7 @@ int RB_CrateTime_ThCollide(struct Thread *crateThread, struct Thread *driverTh, 
 
 			else
 			{
-				Voiceline_RequestPlay(0x13, GAME_CHARACTER_IDS[driver->driverID], 0x10);
+				Voiceline_RequestPlay(0x13, GAME_DRIVER_CHARACTER_ID(driver->driverID), 0x10);
 				GAME_TRACKER->frozenTimeRemaining += 0xb40;
 				GAME_TRACKER->timeCrateTypeSmashed = 3;
 			}

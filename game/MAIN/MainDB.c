@@ -47,6 +47,23 @@ void MainDB_PrimMem(struct PrimMem *primMem, u32 size)
 	primMem->guardEnd = (void *)((int)pvVar1 - 0x100);
 }
 
+#if defined(CTR_NATIVE)
+// MainDB_PrimMem with caller-owned memory instead of a mempack allocation.
+void MainDB_PrimMemFromBuffer(struct PrimMem *primMem, u32 size, void *buffer)
+{
+	if (buffer == NULL)
+	{
+		size = 0;
+	}
+	primMem->capacityBytes = size;
+	primMem->allocationStart = buffer;
+	primMem->cursor = buffer;
+	primMem->start = buffer;
+	primMem->end = (void *)((u8 *)buffer + ((size >> 2) << 2));
+	primMem->guardEnd = (void *)((u8 *)primMem->end - 0x100);
+}
+#endif
+
 void MainDB_OTMem(struct OTMem *otMem, u32 size)
 {
 	u32 alignedSize;

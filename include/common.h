@@ -213,6 +213,45 @@
 #include <functions.h>
 #include <gpu.h>
 
+// Per-driver tables that native extends past 8 drivers for big-field races
+// (native_big_field.h). On PS1 each one is the retail expression.
+#if defined(CTR_NATIVE)
+#include <platform/native_big_field.h>
+#define GAME_DRIVER_CAP                 NATIVE_DRIVER_CAP
+#define GAME_RANK8(rank)                NativeBigField_Rank8(rank)
+#define GAME_DRIVER(gGT, i)             NATIVE_DRIVER(gGT, i)
+#define GAME_DRIVER_IN_RACE_ORDER(gGT, i) NATIVE_DRIVER_IN_RACE_ORDER(gGT, i)
+#define GAME_DRIVER_CHARACTER_ID(i)     NATIVE_CHARACTER_ID(i)
+#define GAME_KART_SPAWN(i)              NATIVE_KART_SPAWN(i)
+#define GAME_ACCEL_ORDER(i)             NATIVE_ACCEL_ORDER(i)
+#define GAME_DRIVER_PATH(i)             NATIVE_DRIVER_PATH(i)
+#define GAME_RANK_ICON_DESIRED(i)       NATIVE_RANK_ICON_DESIRED(i)
+#define GAME_RANK_ICON_CURR(i)          NATIVE_RANK_ICON_CURR(i)
+#define GAME_RANK_ICON_TIMER(i)         NATIVE_RANK_ICON_TIMER(i)
+#define GAME_CUP_POSITION(i)            NATIVE_CUP_POSITION(i)
+#define GAME_CUP_POINTS(gGT, i)         NATIVE_CUP_POINTS(gGT, i)
+#define GAME_HUMAN_POSITION(gGT, i)     NATIVE_HUMAN_POSITION(gGT, i)
+#define GAME_TIMES_ATTACKING(d, other)  NATIVE_TIMES_ATTACKING(d, other)
+#define GAME_TIMES_ATTACKED_BY(d, other) NATIVE_TIMES_ATTACKED_BY(d, other)
+#else
+#define GAME_DRIVER_CAP                 8
+#define GAME_RANK8(rank)                (rank)
+#define GAME_DRIVER(gGT, i)             ((gGT)->drivers[i])
+#define GAME_DRIVER_IN_RACE_ORDER(gGT, i) ((gGT)->driversInRaceOrder[i])
+#define GAME_DRIVER_CHARACTER_ID(i)     (data.characterIDs[i])
+#define GAME_KART_SPAWN(i)              (sdata->kartSpawnOrderArray[i])
+#define GAME_ACCEL_ORDER(i)             (sdata->accelerateOrder[i])
+#define GAME_DRIVER_PATH(i)             (sdata->driver_pathIndexIDs[i])
+#define GAME_RANK_ICON_DESIRED(i)       (data.rankIconsDesired[i])
+#define GAME_RANK_ICON_CURR(i)          (data.rankIconsCurr[i])
+#define GAME_RANK_ICON_TIMER(i)         (data.rankIconsTransitionTimer[i])
+#define GAME_CUP_POSITION(i)            (data.cupPositionPerPlayer[i])
+#define GAME_CUP_POINTS(gGT, i)         ((gGT)->cup.points[i])
+#define GAME_HUMAN_POSITION(gGT, i)     ((gGT)->humanPlayerPositions[i])
+#define GAME_TIMES_ATTACKING(d, other)  ((d)->numTimesAttackingPlayer[other])
+#define GAME_TIMES_ATTACKED_BY(d, other) ((d)->numTimesAttackedByPlayer[other])
+#endif
+
 #if defined(CTR_NATIVE)
 static inline void *CTR_PsyqMemmove(void *dest, const void *src, s32 count)
 {

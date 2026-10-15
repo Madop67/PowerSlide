@@ -42,6 +42,12 @@ enum ArcadeAdventureEndMenuConstants
 	AA_TIME_BOX_HEIGHT_5_LAPS = 0x39,
 	AA_TIME_BOX_HEIGHT_DEFAULT = 0x44,
 	AA_ADD_CONFIG_0_PAGE_OFFSET = -0x2f00,
+	// Native big field: results icons in rows of 12 at 3/4 size.
+	AA_BIG_FIELD_ICONS_PER_ROW = 12,
+	AA_BIG_FIELD_ICON_SPACING = 40,
+	AA_BIG_FIELD_ICON_GAP = 7,
+	AA_BIG_FIELD_ICON_ROW_HEIGHT = 38,
+	AA_BIG_FIELD_ICON_SCALE = 0xc00,
 };
 
 // NOTE(aalhendi): Retail stores this writable one-character string before the
@@ -416,6 +422,20 @@ void AA_EndEvent_DrawMenu(void)
 				s32 driverIconTargetX;
 				s32 iconID;
 
+#if defined(CTR_NATIVE)
+				// A big field's 24 icons don't fit one row: two rows of 12, smaller.
+				s32 driverIconY = 0x60;
+				s32 driverIconScale = AA_DRIVER_ICON_SCALE;
+				if (NATIVE_BIG_FIELD_ON())
+				{
+					driverIconY = 0x60 + (i / AA_BIG_FIELD_ICONS_PER_ROW) * AA_BIG_FIELD_ICON_ROW_HEIGHT;
+					driverIconScale = AA_BIG_FIELD_ICON_SCALE;
+					driverIconTargetX = (u16)pushBuffer->rect.x +
+					                    (pushBuffer->rect.w - (AA_BIG_FIELD_ICONS_PER_ROW * AA_BIG_FIELD_ICON_SPACING - AA_BIG_FIELD_ICON_GAP)) / 2 +
+					                    ((i % AA_BIG_FIELD_ICONS_PER_ROW) * AA_BIG_FIELD_ICON_SPACING);
+				}
+				else
+#endif
 				driverIconTargetX =
 				    (u16)pushBuffer->rect.x + (pushBuffer->rect.w - (loopTotalRacers * 44 + lastRacerIndex * 12)) / 2 + (i * AA_DRIVER_ICON_SPACING);
 
@@ -425,28 +445,62 @@ void AA_EndEvent_DrawMenu(void)
 					s32 driverIconExitFrame;
 
 					driverIconExitFrame = driverIconCurrentFrame - AA_DRIVER_ICON_EXIT_FRAME;
+#if defined(CTR_NATIVE)
+					UI_Lerp2D_Linear(CTR_VECTOR_DATA(&pos), driverIconTargetX, driverIconY, -100, driverIconY, driverIconExitFrame + timeOffsetFrames,
+					                 AA_DRIVER_ICON_STAGGER_FRAMES);
+#else
 					UI_Lerp2D_Linear(CTR_VECTOR_DATA(&pos), driverIconTargetX, 0x60, -100, 0x60, driverIconExitFrame + timeOffsetFrames,
 					                 AA_DRIVER_ICON_STAGGER_FRAMES);
+#endif
 				}
 				else
 				{
+#if defined(CTR_NATIVE)
+					UI_Lerp2D_Linear(CTR_VECTOR_DATA(&pos), 0x218, driverIconY, driverIconTargetX, driverIconY, driverIconLerpFrame, AA_DRIVER_ICON_STAGGER_FRAMES);
+#else
 					UI_Lerp2D_Linear(CTR_VECTOR_DATA(&pos), 0x218, 0x60, driverIconTargetX, 0x60, driverIconLerpFrame, AA_DRIVER_ICON_STAGGER_FRAMES);
+#endif
 				}
 				rankText = driverRankString;
 
 				driverRankString[0] = (char)i + '1';
 
+#if defined(CTR_NATIVE)
+				// Places from 10th take two digits; the buffer is a word.
+				if (i >= 9)
+				{
+					driverRankString[0] = (char)('0' + (i + 1) / 10);
+					driverRankString[1] = (char)('0' + (i + 1) % 10);
+					driverRankString[2] = '\0';
+				}
+				else
+				{
+					driverRankString[1] = '\0';
+				}
+
+				DecalFont_DrawLine(rankText, pos.x + ((driverIconScale * 0x20) >> 12), driverIconY - 1, FONT_SMALL, WHITE);
+#else
 				// print a single character, a number 1-8,
 				DecalFont_DrawLine(rankText, pos.x + 0x20, 0x5f, FONT_SMALL, WHITE);
+#endif
 				driverIconLerpFrame -= AA_DRIVER_ICON_STAGGER_FRAMES;
 
 				iconColor = MakeColorPacked(AA_DRIVER_ICON_GRAY_CHANNEL, AA_DRIVER_ICON_GRAY_CHANNEL, AA_DRIVER_ICON_GRAY_CHANNEL);
 				CTR_PSX_FORGET_VALUE(iconColor);
 				characterIDs = GAME_CHARACTER_IDS;
+#if defined(CTR_NATIVE)
+				(void)characterIDs;
+				characterID = NATIVE_CHARACTER_ID(NATIVE_DRIVER_IN_RACE_ORDER(GAME_TRACKER, i)->driverID);
+#else
 				characterID = characterIDs[GAME_TRACKER->driversInRaceOrder[i]->driverID];
+#endif
 				iconID = characterMetadata[characterID].iconID;
 
 				// Draw the driver's character icon
+#if defined(CTR_NATIVE)
+				UI_DrawDriverIcon(GAME_TRACKER->ptrIcons[iconID], pos.x, driverIconY, &GAME_TRACKER->backBuffer->primMem, GAME_TRACKER->pushBuffer_UI.ptrOT, 1,
+				                  driverIconScale, iconColor);
+#else
 				UI_DrawDriverIcon(
 
 				    GAME_TRACKER->ptrIcons[iconID],
@@ -457,6 +511,7 @@ void AA_EndEvent_DrawMenu(void)
 				    GAME_TRACKER->pushBuffer_UI.ptrOT,
 
 				    1, AA_DRIVER_ICON_SCALE, iconColor);
+#endif
 				i++;
 			} while (i < gameNumIconsEOR);
 		}

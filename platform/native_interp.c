@@ -39,7 +39,7 @@
 // 0x1000 is a full turn, so this is 45 degrees.
 #define NATIVE_INTERP_SNAP_ANGLE    0x200
 #define NATIVE_INTERP_PLAYERS       4
-#define NATIVE_INTERP_DRIVERS       8
+#define NATIVE_INTERP_DRIVERS       NATIVE_MAX_DRIVERS
 
 struct NativeInterpInstance
 {
@@ -278,9 +278,9 @@ void NativeInterp_EndTick(struct GameTracker *gGT)
 		tick->cameras[i].rot = gGT->pushBuffer[i].rot;
 	}
 
-	for (int i = 0; i < NATIVE_INTERP_DRIVERS; i++)
+	for (int i = 0; i < NATIVE_DRIVER_CAP; i++)
 	{
-		struct Driver *d = gGT->drivers[i];
+		struct Driver *d = NATIVE_DRIVER(gGT, i);
 		tick->drivers[i].driver = d;
 		if (d != NULL)
 		{
@@ -388,9 +388,9 @@ internal void NativeInterp_ApplyBlend(struct GameTracker *gGT, int alpha)
 		NativeInterp_BlendCamera(&gGT->pushBuffer[i], &s_prevTick.cameras[i], alpha);
 	}
 
-	for (int i = 0; i < NATIVE_INTERP_DRIVERS; i++)
+	for (int i = 0; i < NATIVE_DRIVER_CAP; i++)
 	{
-		struct Driver *d = gGT->drivers[i];
+		struct Driver *d = NATIVE_DRIVER(gGT, i);
 		if ((d != NULL) && (s_prevTick.drivers[i].driver == d))
 		{
 			NativeInterp_BlendDriver(d, &s_prevTick.drivers[i], alpha);

@@ -1,5 +1,12 @@
 #include <common.h>
 
+// Drivers with a rank icon: retail's 8, or a big field's 24 on native.
+#if defined(CTR_NATIVE)
+#define UI_RANK_DRIVERS NATIVE_DRIVER_CAP
+#else
+#define UI_RANK_DRIVERS UI_RANK_DRIVER_COUNT
+#endif
+
 enum UIRankConstants
 {
 	UI_RANK_DRIVER_COUNT = 8,
@@ -41,7 +48,7 @@ enum UIRankConstants
 internal int UI_Rank_GetDamageColor(int driverIndex)
 {
 	struct GameTracker *gGT = sdata->gGT;
-	struct Driver *d = gGT->drivers[driverIndex];
+	struct Driver *d = GAME_DRIVER(gGT, driverIndex);
 
 	int damageTimer = d->damageColorTimer;
 
@@ -92,9 +99,9 @@ void UI_DrawRankedDrivers(void)
 
 		// incremented when looping through player structures
 
-		for (driverIndex = 0; driverIndex < UI_RANK_DRIVER_COUNT; driverIndex++)
+		for (driverIndex = 0; driverIndex < UI_RANK_DRIVERS; driverIndex++)
 		{
-			if (data.rankIconsTransitionTimer[driverIndex] == 0)
+			if (GAME_RANK_ICON_TIMER(driverIndex) == 0)
 			{
 				// player structure + 0x482 is your rank in the race
 				// 0 = 1st place, 1 = 2nd place, 2 = 3rd place, etc
@@ -103,9 +110,9 @@ void UI_DrawRankedDrivers(void)
 				// Retail reads driverRank before its later null check; if the
 				// slot is empty, PS1 low RAM is still readable, but native
 				// must skip it before dereferencing a null driver pointer.
-				if (gGT->drivers[driverIndex] != NULL)
+				if (GAME_DRIVER(gGT, driverIndex) != NULL)
 				{
-					data.rankIconsDesired[driverIndex] = gGT->drivers[driverIndex]->driverRank;
+					GAME_RANK_ICON_DESIRED(driverIndex) = GAME_DRIVER(gGT, driverIndex)->driverRank;
 				}
 #else
 				data.rankIconsDesired[driverIndex] = gGT->drivers[driverIndex]->driverRank;
@@ -113,9 +120,9 @@ void UI_DrawRankedDrivers(void)
 			}
 
 			// if player structure pointer is not nullptr
-			if ((gGT->drivers[driverIndex] != 0) &&
+			if ((GAME_DRIVER(gGT, driverIndex) != 0) &&
 
-			    ((gGT->drivers[driverIndex]->actionsFlagSet & ACTION_RACE_FINISHED) != 0))
+			    ((GAME_DRIVER(gGT, driverIndex)->actionsFlagSet & ACTION_RACE_FINISHED) != 0))
 			{
 				// count how many racers have finished
 				numRacersFinished++;
@@ -154,20 +161,35 @@ void UI_DrawRankedDrivers(void)
 			rankTextY = rankTextY + (UI_RANK_TEXT_SLOT_HEIGHT << 16);
 		}
 
-		for (driverIndex = 0; driverIndex < UI_RANK_DRIVER_COUNT; driverIndex++)
+		for (driverIndex = 0; driverIndex < UI_RANK_DRIVERS; driverIndex++)
 		{
-			s16 *curr = &data.rankIconsCurr[driverIndex];
-			s16 *des = &data.rankIconsDesired[driverIndex];
+			s16 *curr = &GAME_RANK_ICON_CURR(driverIndex);
+			s16 *des = &GAME_RANK_ICON_DESIRED(driverIndex);
 
 			if (
 			    // if player structure pointer is not nullptr
-			    (gGT->drivers[driverIndex] != 0) &&
+			    (GAME_DRIVER(gGT, driverIndex) != 0) &&
 
 			    // if you haven't gotten to the last driver
+#if defined(CTR_NATIVE)
+			    ((*des + 1) < NATIVE_DRIVER_CAP + 1))
+#else
 			    ((*des + 1) < UI_RANK_DRIVER_COUNT_PLUS_ONE))
+#endif
 			{
 				damageColor = UI_Rank_GetDamageColor(driverIndex);
-				s16 *transitionTimer = &data.rankIconsTransitionTimer[driverIndex];
+				s16 *transitionTimer = &GAME_RANK_ICON_TIMER(driverIndex);
+
+#if defined(CTR_NATIVE)
+				// A big field reshuffles the hidden ranks all race; moving between two of
+				// them would only animate icons below the screen.
+				if (NATIVE_BIG_FIELD_ON() && (*curr >= UI_RANK_VISIBLE_ARCADE_COUNT) && (*des >= UI_RANK_VISIBLE_ARCADE_COUNT))
+				{
+					*curr = *des;
+					*transitionTimer = 0;
+					continue;
+				}
+#endif
 
 				// placeholder
 				Point pos;
@@ -211,7 +233,7 @@ void UI_DrawRankedDrivers(void)
 
 				UI_DrawDriverIcon(
 
-				    gGT->ptrIcons[data.MetaDataCharacters[data.characterIDs[driverIndex]].iconID],
+				    gGT->ptrIcons[data.MetaDataCharacters[GAME_DRIVER_CHARACTER_ID(driverIndex)].iconID],
 
 				    pos.x, pos.y, &gGT->backBuffer->primMem,
 

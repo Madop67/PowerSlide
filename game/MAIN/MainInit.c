@@ -143,12 +143,27 @@ static int MainInit_GetPrimMemSize(struct GameTracker *gGT)
 
 void MainInit_PrimMem(struct GameTracker *gGT)
 {
+#if defined(CTR_NATIVE)
+	// First allocation of a level load: decide the driver cap for everything after.
+	NativeBigField_Latch(gGT);
+#endif
+
 	int size = MainInit_GetPrimMemSize(gGT);
 
 	if (size == 0)
 	{
 		return;
 	}
+
+#if defined(CTR_NATIVE)
+	if (NATIVE_BIG_FIELD_ON())
+	{
+		// Three times the karts to draw: a larger buffer, outside the mempack.
+		MainDB_PrimMemFromBuffer(&gGT->db[0].primMem, size * 2, NativeBigField_Alloc(size * 2));
+		MainDB_PrimMemFromBuffer(&gGT->db[1].primMem, size * 2, NativeBigField_Alloc(size * 2));
+		return;
+	}
+#endif
 
 	MainDB_PrimMem(&gGT->db[0].primMem, size);
 	MainDB_PrimMem(&gGT->db[1].primMem, size);
@@ -210,6 +225,50 @@ EndFunc:
 	gGT->otSwapchainDB[1] = MEMPACK_AllocMem(size, NULL); // "ot2"
 }
 
+#if defined(CTR_NATIVE)
+// Big-field race: retail's race pools, scaled for 24 karts and taken from the big
+// field's arena, so the mempack keeps retail's layout.
+static void MainInit_NativeBigFieldPools(struct GameTracker *gGT, int poolScale, int renderBucketSize)
+{
+	const int scale = NATIVE_MAX_DRIVERS / NATIVE_RETAIL_DRIVERS;
+	int count;
+
+#define MAININIT_BIG_FIELD_POOL(pool, maxItems, itemSize, name)                                       \
+	count = (maxItems);                                                                            \
+	JitPool_InitFromBuffer(&gGT->JitPools.pool, count, (itemSize), NativeBigField_Alloc(count * (itemSize)), (name))
+
+	MAININIT_BIG_FIELD_POOL(thread, ((renderBucketSize * 3) >> 7) * 2, sizeof(struct Thread), rdata.s_ThreadPool);
+	MAININIT_BIG_FIELD_POOL(instance, (renderBucketSize >> 5) * 2, sizeof(struct Instance) + (sizeof(struct InstDrawPerPlayer) * gGT->numPlyrCurrGame),
+	                        rdata.s_InstancePool);
+	MAININIT_BIG_FIELD_POOL(smallStack, ((poolScale * 0x19) >> 10) * 2, THREAD_SMALL_STACK_SIZE, rdata.s_SmallStackPool);
+	MAININIT_BIG_FIELD_POOL(mediumStack, (poolScale >> 7) * 2, THREAD_MEDIUM_STACK_SIZE, rdata.s_MediumStackPool);
+	MAININIT_BIG_FIELD_POOL(largeStack, (poolScale >> 9) * scale, THREAD_LARGE_STACK_SIZE, rdata.s_LargeStackPool);
+	MAININIT_BIG_FIELD_POOL(particle, (poolScale >> 5) * 2, sizeof(struct Particle), rdata.s_ParticlePool);
+	MAININIT_BIG_FIELD_POOL(oscillator, (poolScale >> 5) * 2, 0x18, rdata.s_OscillatorPool);
+	MAININIT_BIG_FIELD_POOL(rain, poolScale >> 9, sizeof(struct RainLocal), rdata.s_RainPool);
+
+#undef MAININIT_BIG_FIELD_POOL
+
+	gGT->ptrRenderBucketInstance = NativeBigField_Alloc(renderBucketSize * scale);
+
+	for (int i = 0; i < 3; i++)
+	{
+		struct JitPool *pool = (struct JitPool *)((char *)&gGT->JitPools.smallStack + (sizeof(struct JitPool) * i));
+		int *pointer = (int *)pool->free.first;
+		while (pointer != (int *)0x0)
+		{
+			*(int **)(pointer + 2) = pointer + 2;
+			pointer = (int *)*pointer;
+		}
+	}
+
+	for (int i = 0; i < gGT->numPlyrCurrGame; i++)
+	{
+		data.PtrClipBuffer[i] = MEMPACK_AllocMem(MainDB_GetClipSize(gGT->levelID, gGT->numPlyrCurrGame) << 2, NULL);
+	}
+}
+#endif
+
 void MainInit_JitPoolsNew(struct GameTracker *gGT)
 {
 	u32 gameMode = gGT->gameMode1;
@@ -238,6 +297,14 @@ void MainInit_JitPoolsNew(struct GameTracker *gGT)
 	}
 
 	MEMPACK_PushState();
+
+#if defined(CTR_NATIVE)
+	if (NATIVE_BIG_FIELD_ON())
+	{
+		MainInit_NativeBigFieldPools(gGT, poolScale, renderBucketSize);
+		return;
+	}
+#endif
 
 	JitPool_Init(&gGT->JitPools.thread, (renderBucketSize * 3) >> 7, sizeof(struct Thread), rdata.s_ThreadPool);
 	JitPool_Init(&gGT->JitPools.instance, renderBucketSize >> 5, sizeof(struct Instance) + (sizeof(struct InstDrawPerPlayer) * gGT->numPlyrCurrGame),
@@ -291,6 +358,11 @@ void MainInit_Drivers(struct GameTracker *gGT)
 	{
 		gGT->drivers[i] = NULL;
 	}
+
+#if defined(CTR_NATIVE)
+	memset(g_nativeBigField.drivers, 0, sizeof(g_nativeBigField.drivers));
+	memset(g_nativeBigField.driversInRaceOrder, 0, sizeof(g_nativeBigField.driversInRaceOrder));
+#endif
 
 	gGT->numBotsNextGame = 0;
 
@@ -348,6 +420,9 @@ void MainInit_Drivers(struct GameTracker *gGT)
 		else if (numPlyrCurrGame == 1)
 		{
 			numDrivers = 8;
+#if defined(CTR_NATIVE)
+			numDrivers = NATIVE_DRIVER_CAP;
+#endif
 		}
 
 		else // if (numPlyrCurrGame == 2)
@@ -496,10 +571,14 @@ void MainInit_FinalizeInit(struct GameTracker *gGT)
 
 	gGT->unk1cac[4] = 2;
 
+#if defined(CTR_NATIVE)
+	for (i = 0; i < NATIVE_DRIVER_CAP; i++)
+#else
 	for (i = 0; i < 8; i++)
+#endif
 	{
 		// get pointer to player structure of each driver
-		d = gGT->drivers[i];
+		d = GAME_DRIVER(gGT, i);
 
 		// if pointer is not nullptr
 		if (d == NULL)

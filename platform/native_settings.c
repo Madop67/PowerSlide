@@ -82,6 +82,7 @@ global_variable const struct NativeCVar s_fixedDescs[] = {
 	{"game", "turbo_counter", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(turboCounter), 0, 1, NULL, P},
 	{"game", "engine_class", NATIVE_CVAR_ENUM, NATIVE_GAME_OFFSET(engineClass), 0, NATIVE_ENGINE_CLASS_COUNT - 1, s_engineClassNames, P},
 	{"game", "drift_class", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(driftClass), 0, 1, NULL, P},
+	{"game", "big_field", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(bigField), 0, 1, NULL, P},
 	{"video", "display_mode", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(displayMode), 0, NATIVE_DISPLAY_COUNT - 1, s_displayModeNames, 0},
 	{"video", "window_width", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowWidth), 0, 16384, NULL, 0},
 	{"video", "window_height", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowHeight), 0, 16384, NULL, 0},

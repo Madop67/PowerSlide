@@ -117,7 +117,7 @@ s16 EngineAudio_Recalculate(u32 soundID, u32 sfx)
 
 void EngineSound_Player(struct Driver *driver)
 {
-	u32 soundID = (u32)GAME_CHARACTER_METADATA[GAME_CHARACTER_IDS[driver->driverID]].engineID * 4u + driver->driverID;
+	u32 soundID = (u32)GAME_CHARACTER_METADATA[GAME_DRIVER_CHARACTER_ID(driver->driverID)].engineID * 4u + driver->driverID;
 	u32 volume;
 	// NOTE(aalhendi): Retail keeps mapped distortion in a1 while forming signed pan.
 	register u32 distortion CTR_PSX_REGISTER("$5");
