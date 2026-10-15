@@ -195,6 +195,8 @@ struct NativeGameSettings
 	int engineClass;
 	// Makes Nitro-Fueled's drift class selectable as game.engine_class.
 	int driftClass;
+	// 1-player races with 24 karts (23 bots) instead of 8, from the next race.
+	int bigField;
 };
 
 struct NativeGlobalSettings

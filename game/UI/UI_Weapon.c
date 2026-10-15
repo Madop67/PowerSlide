@@ -58,7 +58,7 @@ void UI_Weapon_DrawSelf(s16 posX, s16 posY, s16 scale, struct Driver *d)
 		sdata->s_spacebar[0] = d->numHeldItems + '0';
 
 		// character ID
-		characterID = data.characterIDs[d->driverID];
+		characterID = GAME_DRIVER_CHARACTER_ID(d->driverID);
 
 		// if mask item
 		if (itemID == UI_WEAPON_ITEM_MASK)

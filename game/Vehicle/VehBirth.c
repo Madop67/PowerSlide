@@ -4,6 +4,14 @@
 #include <platform/native_hooks.h>
 #endif
 
+// A driver's character from SetConsts' cached table pointer; native reads slots past 8
+// from the big field's extension.
+#if defined(CTR_NATIVE)
+#define VEH_BIRTH_CHARACTER_ID(characterIDs, driverID) NATIVE_CHARACTER_ID(driverID)
+#else
+#define VEH_BIRTH_CHARACTER_ID(characterIDs, driverID) (characterIDs)[driverID]
+#endif
+
 enum
 {
 	VEH_BIRTH_ADV_RETURN_LEVEL_COUNT = 0x14,
@@ -261,9 +269,19 @@ void VehBirth_TeleportSelf(struct Driver *d, u32 spawnFlag, int spawnPosY)
 			{
 				driver->distanceToFinish_checkpoint = tracker->level1->ptr_restart_points[0].distToFinish << 3;
 			}
+#if defined(CTR_NATIVE)
+			spawnIndex = (u8)NATIVE_KART_SPAWN(driverID);
+			{
+				const SVec3 *spawnPos = NativeBigField_SpawnPos(tracker->level1, spawnIndex);
+				posBottom.x = spawnPos->x;
+				posBottom.y = spawnPos->y + VEH_BIRTH_DRIVER_BOTTOM_Y_OFFSET;
+				posBottom.z = spawnPos->z;
+			}
+#else
 			posBottom.x = tracker->level1->DriverSpawn[spawnIndex].pos.x;
 			posBottom.y = tracker->level1->DriverSpawn[spawnIndex].pos.y + VEH_BIRTH_DRIVER_BOTTOM_Y_OFFSET;
 			posBottom.z = tracker->level1->DriverSpawn[spawnIndex].pos.z;
+#endif
 		}
 		}
 	}
@@ -401,11 +419,20 @@ VehBirth_PositionReady:
 			}
 
 			{
+#if defined(CTR_NATIVE)
+				u8 spawnIndex = (u8)NATIVE_KART_SPAWN(driver->driverID);
+				const SVec3 *spawnRot = NativeBigField_SpawnRot(GAME_TRACKER->level1, spawnIndex);
+
+				driver->rotCurr.x = spawnRot->x;
+				driver->rotCurr.y = spawnRot->y;
+				driver->rotCurr.z = spawnRot->z;
+#else
 				u8 spawnIndex = VEH_KART_SPAWN_ORDER[driver->driverID];
 
 				driver->rotCurr.x = GAME_TRACKER->level1->DriverSpawn[spawnIndex].rot.x;
 				driver->rotCurr.y = GAME_TRACKER->level1->DriverSpawn[spawnIndex].rot.y;
 				driver->rotCurr.z = GAME_TRACKER->level1->DriverSpawn[spawnIndex].rot.z;
+#endif
 				driver->rotCurr.y = ANG_MODULO_TWO_PI(driver->rotCurr.y + ANG_HALF_PI);
 			}
 		}
@@ -555,9 +582,13 @@ void VehBirth_TeleportAll(struct GameTracker *gGT, u32 spawnFlags)
 	// NOTE(aalhendi): Retail ignores this parameter and reloads gGT from globals.
 	(void)gGT;
 
+#if defined(CTR_NATIVE)
+	for (i = 0; i < NATIVE_DRIVER_CAP; i++)
+#else
 	for (i = 0; i < (int)len(GAME_TRACKER->drivers); i++)
+#endif
 	{
-		d = GAME_TRACKER->drivers[i];
+		d = GAME_DRIVER(GAME_TRACKER, i);
 
 		if (d == NULL)
 		{
@@ -668,7 +699,7 @@ void VehBirth_SetConsts(struct Driver *driver)
 		{
 		case 1:
 			driverFieldOffset = metaPhys->offset;
-			engineValueOffset = characterMetadata[characterIDs[driver->driverID]].engineID * sizeof(s32);
+			engineValueOffset = characterMetadata[VEH_BIRTH_CHARACTER_ID(characterIDs, driver->driverID)].engineID * sizeof(s32);
 			engineValueOffset += metaPhysByteOffset;
 			metaPhysValue = (u8 *)((size_t)engineValueOffset + (size_t)metaPhysBase);
 			driverField = (u8 *)driver + driverFieldOffset;
@@ -677,7 +708,7 @@ void VehBirth_SetConsts(struct Driver *driver)
 
 		case 2:
 			driverFieldOffset = metaPhys->offset;
-			engineValueOffset = characterMetadata[characterIDs[driver->driverID]].engineID * sizeof(s32);
+			engineValueOffset = characterMetadata[VEH_BIRTH_CHARACTER_ID(characterIDs, driver->driverID)].engineID * sizeof(s32);
 			engineValueOffset += metaPhysByteOffset;
 			metaPhysValue = (u8 *)((size_t)engineValueOffset + (size_t)metaPhysBase);
 			driverField = (u8 *)driver + driverFieldOffset;
@@ -686,7 +717,7 @@ void VehBirth_SetConsts(struct Driver *driver)
 
 		case 4:
 			driverFieldOffset = metaPhys->offset;
-			engineValueOffset = characterMetadata[characterIDs[driver->driverID]].engineID * sizeof(s32);
+			engineValueOffset = characterMetadata[VEH_BIRTH_CHARACTER_ID(characterIDs, driver->driverID)].engineID * sizeof(s32);
 			engineValueOffset += metaPhysByteOffset;
 			metaPhysValue = (u8 *)((size_t)engineValueOffset + (size_t)metaPhysBase);
 			driverField = (u8 *)driver + driverFieldOffset;
@@ -737,7 +768,7 @@ void VehBirth_TireSprites(struct Thread *t)
 
 	if (
 	    // if character ID is oxide
-	    (GAME_CHARACTER_IDS[driverID] == NITROS_OXIDE) && (GAME_TRACKER->levelID != MAIN_MENU_LEVEL))
+	    (GAME_DRIVER_CHARACTER_ID(driverID) == NITROS_OXIDE) && (GAME_TRACKER->levelID != MAIN_MENU_LEVEL))
 	{
 		d->wheelSize = 0;
 	}
@@ -807,6 +838,9 @@ void VehBirth_NonGhost(struct Thread *t, int index)
 
 		characterIDs = GAME_CHARACTER_IDS;
 		characterID = &characterIDs[playerIndex];
+#if defined(CTR_NATIVE)
+		characterID = &NATIVE_CHARACTER_ID(playerIndex);
+#endif
 		id = *characterID;
 	}
 

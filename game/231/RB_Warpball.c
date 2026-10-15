@@ -163,9 +163,9 @@ struct Driver *RB_Warpball_GetDriverTarget(struct TrackerWeapon *tw, struct Inst
 		distanceAlongTrack += 0x200;
 		distanceAlongTrack %= trackDistance;
 
-		for (i = 0; i < 8; i++)
+		for (i = 0; i < GAME_DRIVER_CAP; i++)
 		{
-			struct Driver *driver = GAME_TRACKER->drivers[i];
+			struct Driver *driver = GAME_DRIVER(GAME_TRACKER, i);
 			if (driver != NULL && !(tw->driversHit & (1u << i)) && !(driver->actionsFlagSet & ACTION_RACE_FINISHED) && driver->kartState != KS_MASK_GRABBED)
 			{
 				s32 distance = CTR_MipsSubLo(distanceAlongTrack, driver->distanceToFinish_curr);
@@ -184,9 +184,9 @@ struct Driver *RB_Warpball_GetDriverTarget(struct TrackerWeapon *tw, struct Inst
 	else
 	{
 		s16 rank;
-		for (rank = 0; rank < 8; rank++)
+		for (rank = 0; rank < GAME_DRIVER_CAP; rank++)
 		{
-			struct Driver *driver = GAME_TRACKER->driversInRaceOrder[rank];
+			struct Driver *driver = GAME_DRIVER_IN_RACE_ORDER(GAME_TRACKER, rank);
 			if (driver != NULL && driver != tw->driverParent && !(driver->actionsFlagSet & ACTION_RACE_FINISHED))
 			{
 				bestDriver = driver;
@@ -726,9 +726,9 @@ void RB_Warpball_ThTick(struct Thread *t)
 
 			{
 				s16 rank;
-				for (rank = hitDriver->driverRank; rank < 8; rank++)
+				for (rank = hitDriver->driverRank; rank < GAME_DRIVER_CAP; rank++)
 				{
-					struct Driver *rankDriver = GAME_TRACKER->driversInRaceOrder[rank];
+					struct Driver *rankDriver = GAME_DRIVER_IN_RACE_ORDER(GAME_TRACKER, rank);
 
 					if (rankDriver != NULL)
 					{

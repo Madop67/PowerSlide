@@ -60,14 +60,14 @@ void UI_RenderFrame_Racing()
 	// if time on clock is zero
 	if (gGT->elapsedEventTime == 0)
 	{
-		for (i = 0; i < 8; i++)
+		for (i = 0; i < GAME_DRIVER_CAP; i++)
 		{
-			data.rankIconsTransitionTimer[i] = 0;
+			GAME_RANK_ICON_TIMER(i) = 0;
 
-			pbVar6 = &sdata->kartSpawnOrderArray[i];
+			pbVar6 = &GAME_KART_SPAWN(i);
 
-			data.rankIconsCurr[i] = (u16)*pbVar6;
-			data.rankIconsDesired[i] = (u16)*pbVar6;
+			GAME_RANK_ICON_CURR(i) = (u16)*pbVar6;
+			GAME_RANK_ICON_DESIRED(i) = (u16)*pbVar6;
 		}
 	}
 

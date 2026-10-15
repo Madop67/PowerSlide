@@ -476,7 +476,7 @@ void AH_WarpPad_ThTick(struct Thread *t)
 
 	// If Speed Champion is on the track (Crash-Pura)
 	// and is not the same characterID as this driver
-	if ((champID < AH_WP_RACER_SLOT_COUNT) && (champID != GAME_CHARACTER_IDS[driver->driverID]))
+	if ((champID < AH_WP_RACER_SLOT_COUNT) && (champID != GAME_DRIVER_CHARACTER_ID(driver->driverID)))
 	{
 		champSlot = 0;
 		// set everyone to spawn in order

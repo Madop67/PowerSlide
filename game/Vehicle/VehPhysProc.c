@@ -403,7 +403,7 @@ void VehPhysProc_Driving_PhysLinear(struct Thread *thread, struct Driver *driver
 	// === Check Last Place ===
 
 	// Last Place, and time is unfrozen
-	if ((((driver->driverRank == 7) && (GAME_TRACKER->numPlyrCurrGame == 1)) || ((driver->driverRank == 5) && (GAME_TRACKER->numPlyrCurrGame == 2)) ||
+	if ((((driver->driverRank == GAME_DRIVER_CAP - 1) && (GAME_TRACKER->numPlyrCurrGame == 1)) || ((driver->driverRank == 5) && (GAME_TRACKER->numPlyrCurrGame == 2)) ||
 	     ((driver->driverRank == 3) && (GAME_TRACKER->numPlyrCurrGame > 2))) &&
 	    ((driver->actionsFlagSet & ACTION_RACE_TIMER_FROZEN) == 0))
 	{
@@ -2870,7 +2870,7 @@ void VehPhysProc_SpinFirst_Init(struct Thread *t, struct Driver *d)
 		RB_Player_ModifyWumpa(d, -1);
 	}
 
-	Voiceline_RequestPlay(VEH_PHYS_PROC_SPIN_VOICELINE_ID, GAME_CHARACTER_IDS[d->driverID], VEH_PHYS_PROC_SPIN_VOICELINE_PRIORITY);
+	Voiceline_RequestPlay(VEH_PHYS_PROC_SPIN_VOICELINE_ID, GAME_DRIVER_CHARACTER_ID(d->driverID), VEH_PHYS_PROC_SPIN_VOICELINE_PRIORITY);
 
 	// if spinning left
 	d->KartStates.Spinning.spinDir = 1;

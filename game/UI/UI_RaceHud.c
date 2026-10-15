@@ -535,10 +535,82 @@ UpdateTrackerState:
 	    &gGT->backBuffer->primMem, gGT->pushBuffer[driverID].ptrOT, UI_TRACKER_BG_TRANSPARENCY, x, y, bgColor);
 }
 
+#if defined(CTR_NATIVE)
+// Big-field races rank down to 24th. Retail's suffix table and 3D big number only
+// go to 8th, so from 9th the number is drawn as text and the model is hidden.
+static u8 s_bigFieldHidBigNum[4];
+
+static void UI_DrawPosSuffix_NativeBigField(s16 posX, s16 posY, struct Driver *d, s16 flags)
+{
+	int place = d->driverRank + 1;
+	int suffix = 0x1C; // th
+	struct Instance *bigNum = d->instBigNum;
+	u8 *hidBigNum = &s_bigFieldHidBigNum[d->driverID & 3];
+
+	if ((place % 100 < 11) || (place % 100 > 13))
+	{
+		if (place % 10 == 1)
+		{
+			suffix = 0x19; // st
+		}
+		else if (place % 10 == 2)
+		{
+			suffix = 0x1A; // nd
+		}
+		else if (place % 10 == 3)
+		{
+			suffix = 0x1B; // rd
+		}
+	}
+
+	DecalFont_DrawLine(sdata->lngStrings[suffix], posX, posY, FONT_BIG, flags);
+
+	if (d->driverRank < 8)
+	{
+		if (bigNum != 0)
+		{
+			if (*hidBigNum)
+			{
+				bigNum->flags &= ~HIDE_MODEL;
+				*hidBigNum = 0;
+			}
+			bigNum->matrix.t[2] = (d->driverRank + UI_POS_SUFFIX_BIG_NUM_Z_BASE);
+		}
+		return;
+	}
+
+	if ((bigNum != 0) && ((bigNum->flags & HIDE_MODEL) == 0))
+	{
+		bigNum->flags |= HIDE_MODEL;
+		*hidBigNum = 1;
+	}
+
+	{
+		char number[4];
+		int digit = 0;
+		if (place >= 10)
+		{
+			number[digit++] = (char)('0' + place / 10);
+		}
+		number[digit++] = (char)('0' + place % 10);
+		number[digit] = '\0';
+		DecalFont_DrawLine(number, posX - 1, posY, FONT_BIG, (s16)(flags | JUSTIFY_RIGHT));
+	}
+}
+#endif
+
 void UI_DrawPosSuffix(s16 posX, s16 posY, struct Driver *d, s16 flags)
 {
 	int currRank;
 	struct GameTracker *gGT = sdata->gGT;
+
+#if defined(CTR_NATIVE)
+	if (NATIVE_BIG_FIELD_ON() && ((gGT->gameMode1 & BATTLE_MODE) == 0))
+	{
+		UI_DrawPosSuffix_NativeBigField(posX, posY, d, flags);
+		return;
+	}
+#endif
 
 	// If you're not in Battle Mode
 	if ((gGT->gameMode1 & BATTLE_MODE) == 0)

@@ -66,7 +66,7 @@ static inline void PickupBots_SetCooldown(struct Driver *bot)
 
 static inline void PickupBots_PlayVoice(u32 voiceID, struct Driver *attacker, struct Driver *victim)
 {
-	Voiceline_RequestPlay(voiceID, GAME_CHARACTER_IDS[attacker->driverID], GAME_CHARACTER_IDS[victim->driverID]);
+	Voiceline_RequestPlay(voiceID, GAME_DRIVER_CHARACTER_ID(attacker->driverID), GAME_DRIVER_CHARACTER_ID(victim->driverID));
 }
 
 static inline void PickupBots_UpdateArcade(struct GameTracker *initialGT)
@@ -80,11 +80,11 @@ static inline void PickupBots_UpdateArcade(struct GameTracker *initialGT)
 
 	do
 	{
-		struct Driver *player = GAME_TRACKER->drivers[i];
+		struct Driver *player = GAME_DRIVER(GAME_TRACKER, i);
 
 		if (player->driverRank != 0)
 		{
-			struct Driver *bot = GAME_TRACKER->driversInRaceOrder[player->driverRank - 1];
+			struct Driver *bot = GAME_DRIVER_IN_RACE_ORDER(GAME_TRACKER, player->driverRank - 1);
 
 #if defined(CTR_NATIVE)
 			// NOTE(aalhendi): Retail can read PS1 low memory when a rank slot is empty.
@@ -195,7 +195,7 @@ static inline void PickupBots_UpdateArcade(struct GameTracker *initialGT)
 
 		if (player->driverRank < 3)
 		{
-			struct Driver *bot = GAME_TRACKER->driversInRaceOrder[player->driverRank + 1];
+			struct Driver *bot = GAME_DRIVER_IN_RACE_ORDER(GAME_TRACKER, player->driverRank + 1);
 
 #if defined(CTR_NATIVE)
 			if (bot != NULL)

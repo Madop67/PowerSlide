@@ -44,6 +44,7 @@
 
 #include "platform/native_disc_image.c"
 #include "platform/native_assets.c"
+#include "platform/native_big_field.c"
 #include "platform/native_branding.c"
 #include "platform/native_audio.c"
 #include "platform/native_memory.c"

@@ -1,5 +1,12 @@
 #include <common.h>
 
+// Drivers ranked each frame: retail's 8, or a big field's 24 on native.
+#if defined(CTR_NATIVE)
+#define PLAYLEVEL_DRIVERS NATIVE_DRIVER_CAP
+#else
+#define PLAYLEVEL_DRIVERS PLAYLEVEL_DRIVER_COUNT
+#endif
+
 enum PlayLevelConstants
 {
 	PLAYLEVEL_DRIVER_COUNT = 8,
@@ -50,9 +57,9 @@ void PlayLevel_UpdateLapStats(void)
 	farthestHuman = NULL;
 
 	// find farthest-ahead human
-	for (int raceOrderIndex = 0; raceOrderIndex < PLAYLEVEL_DRIVER_COUNT; raceOrderIndex++)
+	for (int raceOrderIndex = 0; raceOrderIndex < PLAYLEVEL_DRIVERS; raceOrderIndex++)
 	{
-		currDriver = gGT->driversInRaceOrder[raceOrderIndex];
+		currDriver = GAME_DRIVER_IN_RACE_ORDER(gGT, raceOrderIndex);
 
 		if ((currDriver != 0) && ((currDriver->actionsFlagSet & ACTION_BOT) == 0))
 		{
@@ -61,11 +68,11 @@ void PlayLevel_UpdateLapStats(void)
 		}
 	}
 
-	for (driverIndex = 0; driverIndex < PLAYLEVEL_DRIVER_COUNT; driverIndex++)
+	for (driverIndex = 0; driverIndex < PLAYLEVEL_DRIVERS; driverIndex++)
 	{
-		gGT->driversInRaceOrder[driverIndex] = NULL;
+		GAME_DRIVER_IN_RACE_ORDER(gGT, driverIndex) = NULL;
 
-		currDriver = gGT->drivers[driverIndex];
+		currDriver = GAME_DRIVER(gGT, driverIndex);
 
 		if (currDriver == NULL)
 		{
@@ -292,7 +299,7 @@ void PlayLevel_UpdateLapStats(void)
 	}
 
 	// sort all drivers that have NOT finished race
-	for (; currRank < PLAYLEVEL_DRIVER_COUNT; currRank++)
+	for (; currRank < PLAYLEVEL_DRIVERS; currRank++)
 	{
 		// set "min" distance to max
 		minDistance = PLAYLEVEL_DISTANCE_SENTINEL;
@@ -305,10 +312,10 @@ void PlayLevel_UpdateLapStats(void)
 
 		// look for "next" farthest driver,
 		// out of all unsorted drivers remaining
-		for (driverIndex = 0; driverIndex < PLAYLEVEL_DRIVER_COUNT; driverIndex++)
+		for (driverIndex = 0; driverIndex < PLAYLEVEL_DRIVERS; driverIndex++)
 		{
 			// get current driver
-			currDriver = gGT->drivers[driverIndex];
+			currDriver = GAME_DRIVER(gGT, driverIndex);
 
 			if (currDriver == NULL)
 			{
@@ -359,7 +366,7 @@ void PlayLevel_UpdateLapStats(void)
 			// If traffic lights run out
 			if (gGT->trafficLightsTimer < 1)
 			{
-				gGT->drivers[bestDriverIndex]->driverRank = currRank;
+				GAME_DRIVER(gGT, bestDriverIndex)->driverRank = currRank;
 			}
 
 			// if traffic lights >= 1
@@ -367,16 +374,16 @@ void PlayLevel_UpdateLapStats(void)
 			{
 				// set every driver position rank,
 				// to the order that they spawn on the starting line
-				gGT->drivers[bestDriverIndex]->driverRank = sdata->kartSpawnOrderArray[bestDriverIndex];
-				gGT->humanPlayerPositions[bestDriverIndex] = sdata->kartSpawnOrderArray[bestDriverIndex];
+				GAME_DRIVER(gGT, bestDriverIndex)->driverRank = GAME_KART_SPAWN(bestDriverIndex);
+				GAME_HUMAN_POSITION(gGT, bestDriverIndex) = GAME_KART_SPAWN(bestDriverIndex);
 			}
 		}
 	}
 
-	for (driverIndex = 0; driverIndex < PLAYLEVEL_DRIVER_COUNT; driverIndex++)
+	for (driverIndex = 0; driverIndex < PLAYLEVEL_DRIVERS; driverIndex++)
 	{
 		// get pointer to each player structure
-		currDriver = gGT->drivers[driverIndex];
+		currDriver = GAME_DRIVER(gGT, driverIndex);
 
 		if (currDriver == NULL)
 		{
@@ -386,14 +393,14 @@ void PlayLevel_UpdateLapStats(void)
 		// should be impossible to be -1 here
 		if (currDriver->driverRank > PLAYLEVEL_UNSORTED_RANK)
 		{
-			gGT->driversInRaceOrder[currDriver->driverRank] = currDriver;
+			GAME_DRIVER_IN_RACE_ORDER(gGT, currDriver->driverRank) = currDriver;
 		}
 	}
 
 	for (driverIndex = 0; driverIndex < gGT->numPlyrCurrGame; driverIndex++)
 	{
 		// pointer to each player structure
-		currDriver = gGT->drivers[driverIndex];
+		currDriver = GAME_DRIVER(gGT, driverIndex);
 
 		if (currDriver == NULL)
 		{
@@ -405,7 +412,7 @@ void PlayLevel_UpdateLapStats(void)
 		if ((PLAYLEVEL_UNSORTED_RANK < currRank) && (PLAYLEVEL_PASS_VOICELINE_DELAY < gGT->elapsedEventTime) &&
 		    ((s8)gGT->humanPlayerPositions[driverIndex] < currRank))
 		{
-			int characterID = data.characterIDs[gGT->driversInRaceOrder[currRank - 1]->driverID];
+			int characterID = GAME_DRIVER_CHARACTER_ID(GAME_DRIVER_IN_RACE_ORDER(gGT, currRank - 1)->driverID);
 
 			// Make driver talk
 			Voiceline_RequestPlay(PLAYLEVEL_PASS_VOICELINE, characterID, PLAYLEVEL_VOICELINE_FLAGS);
@@ -437,10 +444,10 @@ void PlayLevel_UpdateLapStats(void)
 	        ((gGT->gameMode1 & ARCADE_MODE) != 0) && (humanPlayerCount <= finishedHumanCount)))
 	{
 		// End race for all drivers
-		for (currRank = 0; currRank < PLAYLEVEL_DRIVER_COUNT; currRank++)
+		for (currRank = 0; currRank < PLAYLEVEL_DRIVERS; currRank++)
 		{
 			// Get address of each player structure
-			currDriver = gGT->drivers[currRank];
+			currDriver = GAME_DRIVER(gGT, currRank);
 
 			if (currDriver == NULL)
 			{

@@ -523,13 +523,13 @@ void MainGameEnd_Initialize(void)
 
 	if ((gGT->gameMode1 & END_OF_RACE) == 0)
 	{
-		for (int i = 0; i < 8; i++)
+		for (int i = 0; i < GAME_DRIVER_CAP; i++)
 		{
-			struct Driver *driver = gGT->drivers[i];
+			struct Driver *driver = GAME_DRIVER(gGT, i);
 
 			if (driver != NULL)
 			{
-				sdata->kartSpawnOrderArray[i] = driver->driverRank;
+				GAME_KART_SPAWN(i) = driver->driverRank;
 			}
 		}
 

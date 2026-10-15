@@ -18,9 +18,13 @@ void Podium_InitModels(struct GameTracker *gGT)
 
 	u8 *podiumModelIndexArr = &gGT->podium_modelIndex_First;
 
+#if defined(CTR_NATIVE)
+	for (int i = 0; i < NATIVE_DRIVER_CAP; i++)
+#else
 	for (int i = 0; i < PODIUM_DRIVER_COUNT; i++)
+#endif
 	{
-		struct Driver *driver = gGT->drivers[i];
+		struct Driver *driver = GAME_DRIVER(gGT, i);
 
 		if (driver == NULL)
 		{
@@ -35,7 +39,7 @@ void Podium_InitModels(struct GameTracker *gGT)
 		case PODIUM_RANK_SECOND:
 		case PODIUM_RANK_THIRD:
 		{
-			u8 characterID = data.characterIDs[driver->driverID];
+			u8 characterID = GAME_DRIVER_CHARACTER_ID(driver->driverID);
 			podiumModelIndexArr[rank] = characterID + STATIC_CRASHDANCE;
 
 			if (rank != PODIUM_RANK_FIRST)

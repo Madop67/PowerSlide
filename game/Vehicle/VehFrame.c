@@ -197,7 +197,7 @@ void VehFrameProc_Driving(struct Thread *t, struct Driver *d)
 			return;
 		}
 
-		characterID = GAME_CHARACTER_IDS[d->driverID];
+		characterID = GAME_DRIVER_CHARACTER_ID(d->driverID);
 		if (characterID == PENTA_PENGUIN)
 		{
 			characterID = COCO_BANDICOOT;

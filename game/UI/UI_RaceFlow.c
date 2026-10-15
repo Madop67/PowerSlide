@@ -76,9 +76,13 @@ void UI_RaceEnd_GetDriverClock(struct Driver *driver)
 		attacksReceived = 0;
 
 		// count number of times you were attacked in race
+#if defined(CTR_NATIVE)
+		for (int i = 0; i < NATIVE_DRIVER_CAP; i++)
+#else
 		for (int i = 0; i < UI_RACE_END_DRIVER_COUNT; i++)
+#endif
 		{
-			attacksReceived += driver->numTimesAttackedByPlayer[i];
+			attacksReceived += GAME_TIMES_ATTACKED_BY(driver, i);
 		}
 
 		driver->numTimesAttacked = attacksReceived;

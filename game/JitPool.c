@@ -32,6 +32,24 @@ void JitPool_Init(struct JitPool *AP, int maxItems, int itemSize, char *name)
 }
 
 
+#if defined(CTR_NATIVE)
+// JitPool_Init with caller-owned memory instead of a mempack allocation.
+void JitPool_InitFromBuffer(struct JitPool *AP, int maxItems, int itemSize, void *buffer, char *name)
+{
+	(void)name;
+	memset(AP, 0, sizeof(struct JitPool));
+	if (buffer == NULL)
+	{
+		maxItems = 0;
+	}
+	AP->maxItems = maxItems;
+	AP->itemSize = itemSize;
+	AP->poolSize = maxItems * itemSize;
+	AP->ptrPoolData = buffer;
+	JitPool_Clear(AP);
+}
+#endif
+
 int JitPool_Add(struct JitPool *AP)
 {
 	struct Item *item = AP->free.first;

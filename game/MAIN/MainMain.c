@@ -43,9 +43,10 @@ static u32 MainReplayScheduler_DriverHash(struct GameTracker *gGT)
 		return 0;
 	}
 
-	for (s32 i = 0; i < 8; i++)
+	// A big field hashes all its drivers; the bound is 8 otherwise, as recorded.
+	for (s32 i = 0; i < NATIVE_DRIVER_CAP; i++)
 	{
-		const struct Driver *driver = gGT->drivers[i];
+		const struct Driver *driver = NATIVE_DRIVER(gGT, i);
 		s32 fields[10];
 
 		if (driver == NULL)

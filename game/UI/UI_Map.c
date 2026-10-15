@@ -268,7 +268,7 @@ void UI_Map_DrawDrivers(struct UIMap *map, struct Thread *bucket, s16 *driverIco
 		}
 
 		d = bucket->object;
-		kartColor = (u16)GAME_CHARACTER_IDS[d->driverID] + CRASH_BLUE;
+		kartColor = (u16)GAME_DRIVER_CHARACTER_ID(d->driverID) + CRASH_BLUE;
 
 		// NOTE(aalhendi): Prepare one shared icon call in each branch. Separate
 		// calls hoist the scale into an extra saved register with GCC 2.8.1.

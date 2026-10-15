@@ -109,7 +109,11 @@ int VehPickState_NewState(struct Driver *victimDriver, int damageType, struct Dr
 	}
 
 VictimLaugh:
+#if defined(CTR_NATIVE)
+	Voiceline_RequestPlay(voiceType, NATIVE_CHARACTER_ID(victimID), VEH_PICK_VOICELINE_PRIORITY);
+#else
 	Voiceline_RequestPlay(voiceType, characterIDs[victimID], VEH_PICK_VOICELINE_PRIORITY);
+#endif
 ReturnZero:
 	return 0;
 
@@ -217,7 +221,7 @@ Burn:
 	if (victimDriver->burnTimer == 0)
 	{
 		OtherFX_Play(VEH_PICK_SOUND_BURN, 1);
-		Voiceline_RequestPlay(VEH_PICK_VOICELINE_COMMON_DAMAGE, GAME_CHARACTER_IDS[victimDriver->driverID], VEH_PICK_VOICELINE_PRIORITY);
+		Voiceline_RequestPlay(VEH_PICK_VOICELINE_COMMON_DAMAGE, GAME_DRIVER_CHARACTER_ID(victimDriver->driverID), VEH_PICK_VOICELINE_PRIORITY);
 	}
 
 	victimDriver->burnTimer = VEH_PICK_BURN_TIMER;
@@ -228,7 +232,7 @@ Squish:
 	if (victimState != KS_SPINNING)
 	{
 		OtherFX_Play_Echo(VEH_PICK_SOUND_SQUISH, 1, (u16)(victimDriver->actionsFlagSet >> 16) & 1);
-		Voiceline_RequestPlay(VEH_PICK_VOICELINE_SQUISH, GAME_CHARACTER_IDS[victimDriver->driverID], VEH_PICK_VOICELINE_PRIORITY);
+		Voiceline_RequestPlay(VEH_PICK_VOICELINE_SQUISH, GAME_DRIVER_CHARACTER_ID(victimDriver->driverID), VEH_PICK_VOICELINE_PRIORITY);
 	}
 
 	victimDriver->squishTimer = VEH_PICK_SQUISH_TIMER;
@@ -365,8 +369,8 @@ DamageApplied:
 
 		CTR_PSX_KEEP_VALUE(one);
 		attackDriver->BattleHUD.cooldown = VEH_PICK_BATTLE_HUD_COOLDOWN;
-		victimDriver->numTimesAttackedByPlayer[attackDriver->driverID]++;
-		attackDriver->numTimesAttackingPlayer[victimDriver->driverID]++;
+		GAME_TIMES_ATTACKED_BY(victimDriver, attackDriver->driverID)++;
+		GAME_TIMES_ATTACKING(attackDriver, victimDriver->driverID)++;
 
 		if (attackDriver != victimDriver)
 		{

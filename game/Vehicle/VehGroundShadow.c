@@ -98,7 +98,19 @@ static inline void VehGroundShadow_LoadGteRotMatrix(const MATRIX *m)
 	CTC2(VehGroundShadow_ReadWord(m, 0x10), 4);
 }
 
+#if defined(CTR_NATIVE)
+// The scratchpad holds shadow entries for 8 drivers; a big field draws its 24 in
+// batches of 8, each batch reading the drivers from this base.
+static int s_groundShadowDriverBase;
+#define VEH_GROUND_SHADOW_DRIVER(tracker, i)                                                                                 \
+	((s_groundShadowDriverBase + (i) < NATIVE_DRIVER_CAP) ? NATIVE_DRIVER((tracker), s_groundShadowDriverBase + (i)) : NULL)
+
+static void VehGroundShadow_DrawBatch(void)
+#else
+#define VEH_GROUND_SHADOW_DRIVER(tracker, i) ((tracker)->drivers[i])
+
 void VehGroundShadow_Main(void)
+#endif
 {
 	register u8 *scratch CTR_PSX_REGISTER("$19");
 	u32 *prim;
@@ -168,7 +180,7 @@ void VehGroundShadow_Main(void)
 	{
 		struct GameTracker *tracker = GAME_TRACKER;
 
-		driver = tracker->drivers[playerIndex];
+		driver = VEH_GROUND_SHADOW_DRIVER(tracker, playerIndex);
 		if (driver != NULL)
 		{
 			*(struct Driver **)((u8 *)y + 2) = driver;
@@ -588,3 +600,16 @@ write_cursor:
 	tracker->backBuffer->primMem.cursor = prim;
 }
 }
+
+#if defined(CTR_NATIVE)
+void VehGroundShadow_Main(void)
+{
+	for (int base = 0; base < NATIVE_DRIVER_CAP; base += VEH_GROUND_SHADOW_MAX_DRIVERS)
+	{
+		s_groundShadowDriverBase = base;
+		VehGroundShadow_DrawBatch();
+	}
+
+	s_groundShadowDriverBase = 0;
+}
+#endif

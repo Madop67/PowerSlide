@@ -75,11 +75,11 @@ void UI_CupStandings_FinalizeCupRanks(void)
 	tiedTopCount = 0;
 	if (1 < numDrivers)
 	{
-		topScore = gGT->cup.points[data.cupPositionPerPlayer[0]];
+		topScore = GAME_CUP_POINTS(gGT, data.cupPositionPerPlayer[0]);
 
 		for (int i = 1; i < numDrivers; i++)
 		{
-			if (gGT->cup.points[data.cupPositionPerPlayer[i]] != topScore)
+			if (GAME_CUP_POINTS(gGT, data.cupPositionPerPlayer[i]) != topScore)
 			{
 				break;
 			}
@@ -93,7 +93,7 @@ void UI_CupStandings_FinalizeCupRanks(void)
 		for (int i = rankSlot; i < tiedTopCount + 1; i++)
 		{
 			struct Driver *driver;
-			driver = gGT->drivers[data.cupPositionPerPlayer[i]];
+			driver = GAME_DRIVER(gGT, data.cupPositionPerPlayer[i]);
 
 			if (driver->driverRank < (s16)bestRank)
 			{
@@ -133,9 +133,9 @@ void UI_CupStandings_UpdateCupRanks(void)
 	{
 		for (int driverIndex = numDrivers - 1; driverIndex >= 0; driverIndex--)
 		{
-			if ((gGT->cup.points[driverIndex] >= (s16)bestScore) && (((assignedMask >> driverIndex) & 1) == 0))
+			if ((GAME_CUP_POINTS(gGT, driverIndex) >= (s16)bestScore) && (((assignedMask >> driverIndex) & 1) == 0))
 			{
-				bestScore = (u16)gGT->cup.points[driverIndex];
+				bestScore = (u16)GAME_CUP_POINTS(gGT, driverIndex);
 
 				if ((s16)bestIndex != -1)
 				{
@@ -147,11 +147,44 @@ void UI_CupStandings_UpdateCupRanks(void)
 			}
 		}
 
-		data.cupPositionPerPlayer[rankSlot] = (s16)bestIndex;
+		GAME_CUP_POSITION(rankSlot) = (s16)bestIndex;
 		bestScore = 0;
 		bestIndex = -1;
 	}
 }
+
+// Standings row (place - 1) the current grid cell shows.
+#if defined(CTR_NATIVE)
+#define UI_CUP_STANDINGS_ROW row
+#else
+#define UI_CUP_STANDINGS_ROW i
+#endif
+
+#if defined(CTR_NATIVE)
+// Standings row shown in grid cell `cell`: cells 0..7 show places 1..8, except that a
+// big field gives the last cell to the player when they are further back.
+static int UI_CupStandings_NativeRow(int cell, int trackPage)
+{
+	struct GameTracker *gGT = sdata->gGT;
+
+	if (!NATIVE_BIG_FIELD_ON() || (cell != UI_CUP_STANDINGS_DRIVER_SLOTS - 1))
+	{
+		return cell;
+	}
+
+	for (int row = cell; row < NATIVE_DRIVER_CAP; row++)
+	{
+		struct Driver *d = trackPage ? NATIVE_DRIVER_IN_RACE_ORDER(gGT, row) : NATIVE_DRIVER(gGT, NATIVE_CUP_POSITION(row));
+
+		if ((d != NULL) && ((d->actionsFlagSet & ACTION_BOT) == 0))
+		{
+			return row;
+		}
+	}
+
+	return cell;
+}
+#endif
 
 void UI_CupStandings_InputAndDraw(void)
 {
@@ -168,6 +201,14 @@ void UI_CupStandings_InputAndDraw(void)
 	int iconEndX;
 	int numDrivers = gGT->numPlyrCurrGame + gGT->numBotsNextGame;
 	s16 vsCupIconOffsetX;
+
+#if defined(CTR_NATIVE)
+	// A big field shows the standings' first 8 rows in retail's 2x4 grid.
+	if (NATIVE_BIG_FIELD_ON() && (numDrivers > UI_CUP_STANDINGS_DRIVER_SLOTS))
+	{
+		numDrivers = UI_CUP_STANDINGS_DRIVER_SLOTS;
+	}
+#endif
 
 	SVec2 drawPos;
 
@@ -395,8 +436,12 @@ void UI_CupStandings_InputAndDraw(void)
 		// Interpolate fly-in variables over 0x14 frames
 		UI_Lerp2D_Linear(CTR_VECTOR_DATA(&(drawPos)), iconStartX, iconTargetY, iconEndX, iconTargetY, animationFrame, UI_CUP_STANDINGS_LERP_FRAMES);
 
+#if defined(CTR_NATIVE)
+		int row = UI_CupStandings_NativeRow(i, (sdata->menuReadyToPass & UI_CUP_STANDINGS_PAGE_TRACK_POINTS) == 0);
+#endif
+
 		// %d
-		sprintf(text, (char *)&sdata->s_int, i + 1);
+		sprintf(text, (char *)&sdata->s_int, UI_CUP_STANDINGS_ROW + 1);
 
 		DecalFont_DrawLine(text, drawPos.x + UI_CUP_STANDINGS_PLACE_TEXT_X_OFFSET, drawPos.y + UI_CUP_STANDINGS_PLACE_TEXT_Y_OFFSET, FONT_SMALL, RED);
 
@@ -407,7 +452,7 @@ void UI_CupStandings_InputAndDraw(void)
 		if ((sdata->menuReadyToPass & UI_CUP_STANDINGS_PAGE_TRACK_POINTS) == 0)
 		{
 			// get driver in order of race rank (for one track)
-			d = gGT->driversInRaceOrder[i];
+			d = GAME_DRIVER_IN_RACE_ORDER(gGT, UI_CUP_STANDINGS_ROW);
 		}
 
 		// if this is not the first page,
@@ -415,11 +460,11 @@ void UI_CupStandings_InputAndDraw(void)
 		else
 		{
 			// get driver in order of cup rank (for collection of tracks)
-			d = gGT->drivers[data.cupPositionPerPlayer[i]];
+			d = GAME_DRIVER(gGT, GAME_CUP_POSITION(UI_CUP_STANDINGS_ROW));
 		}
 
 		// Draw character icon
-		UI_DrawDriverIcon(gGT->ptrIcons[data.MetaDataCharacters[data.characterIDs[d->driverID]].iconID],
+		UI_DrawDriverIcon(gGT->ptrIcons[data.MetaDataCharacters[GAME_DRIVER_CHARACTER_ID(d->driverID)].iconID],
 
 		                  drawPos.x, drawPos.y, &gGT->backBuffer->primMem,
 
@@ -432,15 +477,15 @@ void UI_CupStandings_InputAndDraw(void)
 		{
 			int awardedPoints = 0;
 
-			if (i < UI_CUP_STANDINGS_MAX_VISIBLE_AWARD_DRIVERS)
+			if (UI_CUP_STANDINGS_ROW < UI_CUP_STANDINGS_MAX_VISIBLE_AWARD_DRIVERS)
 			{
 				if (gGT->numBotsNextGame == 0)
 				{
-					awardedPoints = gGT->numPlyrCurrGame - (i + 1);
+					awardedPoints = gGT->numPlyrCurrGame - (UI_CUP_STANDINGS_ROW + 1);
 				}
 				else
 				{
-					awardedPoints = points[i];
+					awardedPoints = points[UI_CUP_STANDINGS_ROW];
 				}
 			}
 
@@ -452,7 +497,7 @@ void UI_CupStandings_InputAndDraw(void)
 		else
 		{
 			// The amount of points that each player has, in a cup
-			sprintf(text, &sdata->s_longInt[0], gGT->cup.points[data.cupPositionPerPlayer[i]]);
+			sprintf(text, &sdata->s_longInt[0], GAME_CUP_POINTS(gGT, GAME_CUP_POSITION(UI_CUP_STANDINGS_ROW)));
 		}
 
 		vsCupIconOffsetX = vsCupIconOffsetX + UI_CUP_STANDINGS_ICON_SLOT_W;
@@ -547,7 +592,7 @@ void UI_CupStandings_InputAndDraw(void)
 			for (i = 0; i < numDrivers; i++)
 			{
 				// the amount of points this player has in the cup
-				gGT->cup.points[gGT->driversInRaceOrder[i]->driverID] +=
+				GAME_CUP_POINTS(gGT, GAME_DRIVER_IN_RACE_ORDER(gGT, i)->driverID) +=
 
 				    // Incremented by
 				    // The amount of points that should be awarded to each position
@@ -610,6 +655,21 @@ void UI_CupStandings_InputAndDraw(void)
 
 				// Array with the final ranking of each player
 				int *ranks = &data.cupPositionPerPlayer[0];
+#if defined(CTR_NATIVE)
+				(void)ranks;
+				for (i = 0; i < NATIVE_DRIVER_CAP; i++)
+				{
+					struct Driver *d;
+					d = NATIVE_DRIVER(gGT, NATIVE_CUP_POSITION(i));
+
+					if (d != 0)
+					{
+						d->driverRank = (s16)i;
+					}
+
+					NATIVE_CUP_POINTS(gGT, i) = 0;
+				}
+#else
 				for (i = 0; i < UI_CUP_STANDINGS_DRIVER_SLOTS; i++)
 				{
 					struct Driver *d;
@@ -625,6 +685,7 @@ void UI_CupStandings_InputAndDraw(void)
 					// set driver's cup score to zero
 					gGT->cup.points[i] = 0;
 				}
+#endif
 
 				Podium_InitModels(gGT);
 
