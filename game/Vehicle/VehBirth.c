@@ -1,5 +1,9 @@
 #include "VehCommon.h"
 
+#if defined(CTR_NATIVE)
+#include <platform/native_hooks.h>
+#endif
+
 enum
 {
 	VEH_BIRTH_ADV_RETURN_LEVEL_COUNT = 0x14,
@@ -842,6 +846,9 @@ void VehBirth_NonGhost(struct Thread *t, int index)
 	d->terrainMeta2 = d->terrainMeta1;
 #endif
 	VehBirth_SetConsts(d);
+#if defined(CTR_NATIVE)
+	NATIVE_HOOK(DriverConsts, d);
+#endif
 
 	// if you are in cutscene or in main menu
 	if ((GAME_TRACKER->gameMode1 & GAME_MODE_MENU_OR_CUTSCENE_MASK) != 0)

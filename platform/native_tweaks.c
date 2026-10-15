@@ -12,6 +12,11 @@
 //   entered); each takes effect where retail reads its flag, mostly when a race starts.
 //   Retail clears the item cheats when adventure or time trial starts, so they stay off
 //   there too.
+// - game.engine_class: every human player's kart uses the chosen engine class instead of
+//   its character's, from the next race. Bots, ghosts and the attract-mode demo keep
+//   theirs. Only the handling changes; the engine sound and garage stat bars do not.
+// - game.drift_class: makes "drift" selectable as the engine class. Nitro-Fueled's drift
+//   class has no retail stats, so s_driftClassStats builds one on the balanced class.
 
 #define NATIVE_ITEM_CHEAT_NOTE "Only one unlimited weapon is held: masks win over turbo, and turbo over bombs. "
 #define NATIVE_ITEM_CHEAT_SCOPE "Takes effect from the next race; not used in adventure or time trial."
@@ -91,6 +96,75 @@ internal void NativeTweaks_OnBeforeDraw(struct GameTracker *gGT, struct GamepadS
 	}
 }
 
+// The drift class: balanced stats except these. Low acceleration and a middling top speed
+// (acceleration class's) pay for the tightest drifts of any class, with a little less
+// grip outside them.
+struct NativeEngineStat
+{
+	int offset;
+	int value;
+};
+
+global_variable const struct NativeEngineStat s_driftClassStats[] = {
+	{ACCEL_CLASS_STAT_OFFSET, 448},
+	{SPEED_CLASS_STAT_OFFSET, 13520},
+	{ACCEL_SPEED_CLASS_STAT_OFFSET, 15020},
+	{TURN_RATE_OFFSET, 26},
+	{DRIFT_TURN_BASE_OFFSET, 22},
+	{DRIFT_TURN_SAME_DIRECTION_ANGLE_OFFSET, 360},
+};
+
+int NativeTweaks_EngineClass(void)
+{
+	const int engineClass = g_settings.game.engineClass;
+	if ((engineClass == NATIVE_ENGINE_CLASS_DRIFT) && !g_settings.game.driftClass)
+	{
+		return NATIVE_ENGINE_CLASS_CHARACTER;
+	}
+	return engineClass;
+}
+
+internal void NativeTweaks_OnDriverConsts(struct Driver *driver)
+{
+	struct GameTracker *gGT = sdata->gGT;
+	const int engineClass = NativeTweaks_EngineClass();
+	if ((engineClass == NATIVE_ENGINE_CLASS_CHARACTER) || gGT->boolDemoMode || (driver->driverID >= gGT->numPlyrCurrGame))
+	{
+		return;
+	}
+
+	const int column = (engineClass == NATIVE_ENGINE_CLASS_DRIFT) ? BALANCED : (engineClass - NATIVE_ENGINE_CLASS_BALANCED);
+	for (int i = 0; i < (int)(sizeof(data.metaPhys) / sizeof(data.metaPhys[0])); i++)
+	{
+		const struct MetaPhys *stat = &data.metaPhys[i];
+		int value = stat->value[column];
+		if (engineClass == NATIVE_ENGINE_CLASS_DRIFT)
+		{
+			for (int j = 0; j < (int)(sizeof(s_driftClassStats) / sizeof(s_driftClassStats[0])); j++)
+			{
+				if (s_driftClassStats[j].offset == stat->offset)
+				{
+					value = s_driftClassStats[j].value;
+				}
+			}
+		}
+
+		u8 *field = (u8 *)driver + stat->offset;
+		switch (stat->size)
+		{
+		case 1:
+			*(s8 *)field = (s8)value;
+			break;
+		case 2:
+			*(s16 *)field = (s16)value;
+			break;
+		case 4:
+			*(s32 *)field = value;
+			break;
+		}
+	}
+}
+
 internal void NativeTweaks_OnCharacterUnlocked(int *unlocked)
 {
 	if (g_settings.game.unlockAllCharacters)
@@ -103,4 +177,5 @@ void NativeTweaks_RegisterHooks(void)
 {
 	NativeHook_RegisterBeforeDraw(NativeTweaks_OnBeforeDraw);
 	NativeHook_RegisterCharacterUnlocked(NativeTweaks_OnCharacterUnlocked);
+	NativeHook_RegisterDriverConsts(NativeTweaks_OnDriverConsts);
 }

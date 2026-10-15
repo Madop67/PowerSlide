@@ -44,6 +44,8 @@ global_variable const char *const s_aspectModeNames[NATIVE_ASPECT_COUNT] = {"ori
 global_variable const char *const s_scaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"sharp", "smooth"};
 global_variable const char *const s_hudPositionNames[NATIVE_HUD_POSITION_COUNT] = {"edges", "centre"};
 global_variable const char *const s_fastBootNames[NATIVE_FAST_BOOT_COUNT] = {"off", "title", "menu"};
+global_variable const char *const s_engineClassNames[NATIVE_ENGINE_CLASS_COUNT] = {"character", "balanced", "acceleration",
+                                                                                   "speed",     "turning",  "drift"};
 
 // One section per player: [input.player1] .. [input.player4].
 global_variable const char *const s_playerSections[NATIVE_INPUT_PLAYERS] = {"input.player1", "input.player2", "input.player3", "input.player4"};
@@ -78,6 +80,8 @@ global_variable const struct NativeCVar s_fixedDescs[] = {
 	{"game", "super_hard", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(superHard), 0, 1, NULL, P},
 	{"game", "adventure_difficulty", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(adventureDifficulty), 0, 1, NULL, P},
 	{"game", "turbo_counter", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(turboCounter), 0, 1, NULL, P},
+	{"game", "engine_class", NATIVE_CVAR_ENUM, NATIVE_GAME_OFFSET(engineClass), 0, NATIVE_ENGINE_CLASS_COUNT - 1, s_engineClassNames, P},
+	{"game", "drift_class", NATIVE_CVAR_BOOL, NATIVE_GAME_OFFSET(driftClass), 0, 1, NULL, P},
 	{"video", "display_mode", NATIVE_CVAR_ENUM, NATIVE_VIDEO_OFFSET(displayMode), 0, NATIVE_DISPLAY_COUNT - 1, s_displayModeNames, 0},
 	{"video", "window_width", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowWidth), 0, 16384, NULL, 0},
 	{"video", "window_height", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(windowHeight), 0, 16384, NULL, 0},
