@@ -96,6 +96,10 @@ set(CTR_GUEST_CXX_FLAGS
     -I${CMAKE_SOURCE_DIR}/externals/imgui/backends
     -I${CMAKE_BINARY_DIR}/generated
 )
+if(ANDROID)
+    # NOTE: Phones get the touch layout of the settings menu (native_ui.cpp).
+    list(APPEND CTR_GUEST_CXX_FLAGS -DCTR_NATIVE_TOUCH_UI)
+endif()
 
 set(CTR_GUEST_CXX_SOURCES
     platform/native_ui.cpp

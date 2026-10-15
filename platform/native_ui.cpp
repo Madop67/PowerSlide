@@ -14,8 +14,11 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
+#include "imgui_internal.h"
 #include "native_ui_font.h"
 
+#include <float.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -34,12 +37,33 @@ namespace
 // height at half the rate (1.5x at twice the height), so a fullscreen menu stays
 // a comfortable fraction of the screen; it never shrinks below kMinHeightScale.
 // Display DPI is not applied on top: the window's own height already reflects it.
+// (The touch layout below is the exception and sizes by display density.)
 constexpr float kBaseFontSize = 16.0f;
 constexpr float kReferenceHeight = 720.0f;
 constexpr float kHeightScaleRate = 0.5f;
 constexpr float kMinHeightScale = 0.75f;
 // Logo height in the menu header, in font sizes.
 constexpr float kLogoFontScale = 2.0f;
+
+// Touch layout (Android, CTR_NATIVE_TOUCH_UI): the menu fills the screen height with
+// finger-sized rows, its pages scroll by dragging, sliders become -/+ steppers and
+// help text opens from a "?" button instead of a hover tooltip.
+#if defined(CTR_NATIVE_TOUCH_UI)
+constexpr bool kTouchUi = true;
+#else
+constexpr bool kTouchUi = false;
+#endif
+// Text size per display density unit (about 18 dp), with room for at least kTouchMinLines lines.
+constexpr float kTouchFontScale = 1.125f;
+constexpr float kTouchMinLines = 16.0f;
+// Widest the menu gets, and the width of help popups, in font sizes.
+constexpr float kTouchMaxWidthFonts = 44.0f;
+constexpr float kTouchHelpWidthFonts = 28.0f;
+// A fling slows by this factor per second and stops below kTouchFlingStop font sizes per second.
+constexpr float kTouchFlingDecay = 4.0f;
+constexpr float kTouchFlingStop = 2.0f;
+// A release this long after the finger last moved doesn't fling.
+constexpr double kTouchFlingMaxPause = 0.1;
 
 // Window size presets are these heights at the picture's aspect ratio.
 constexpr int kWindowHeights[] = {480, 720, 900, 1080, 1440, 2160};
@@ -161,6 +185,17 @@ void ApplyStyle(float scale)
 	style.ItemInnerSpacing = ImVec2(8.0f, 6.0f);
 	style.SeparatorTextBorderSize = 2.0f;
 	style.SeparatorTextPadding = ImVec2(0.0f, 4.0f);
+	if (kTouchUi)
+	{
+		// Rows about 44 dp tall; the thin scrollbar only shows where the page is.
+		style.FramePadding = ImVec2(12.0f, 12.0f);
+		style.ItemSpacing = ImVec2(12.0f, 10.0f);
+		style.ItemInnerSpacing = ImVec2(10.0f, 8.0f);
+		style.TouchExtraPadding = ImVec2(2.0f, 2.0f);
+		style.GrabMinSize = 20.0f;
+		style.ScrollbarSize = 6.0f;
+		style.SelectableTextAlign = ImVec2(0.0f, 0.5f);
+	}
 	style.ScaleAllSizes(scale);
 
 	style.FontSizeBase = kBaseFontSize;
@@ -260,6 +295,15 @@ void UpdateStyleScale()
 		// style every pixel; the floor keeps small windows readable.
 		const float heightScale = 1.0f + (height / kReferenceHeight - 1.0f) * kHeightScaleRate;
 		scale = SDL_max(SDL_floorf(heightScale * 8.0f) / 8.0f, kMinHeightScale);
+
+		// A phone's screen is a few inches tall however many pixels it has, so size
+		// the touch layout by display density instead.
+		const float density = kTouchUi ? SDL_GetWindowDisplayScale(s_window) : 0.0f;
+		if (density > 0.0f)
+		{
+			const float touchScale = SDL_min(density * kTouchFontScale, height / (kBaseFontSize * kTouchMinLines));
+			scale = SDL_max(SDL_floorf(touchScale * 8.0f) / 8.0f, kMinHeightScale);
+		}
 	}
 
 	if (scale != s_styleScale)
@@ -314,9 +358,44 @@ bool CheckboxInt(const char *label, int *value)
 	return true;
 }
 
+// Help for the item just drawn: a hover tooltip, or on touch screens (which can't hover)
+// a "?" button that opens the text.
 void HelpTooltip(const char *text)
 {
-	ImGui::SetItemTooltip("%s", text);
+	if (!kTouchUi)
+	{
+		ImGui::SetItemTooltip("%s", text);
+		return;
+	}
+
+	ImGui::PushID(text);
+	// Help stays readable next to options that are locked.
+	const bool disabled = (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+	if (disabled)
+	{
+		ImGui::BeginDisabledOverrideReenable();
+	}
+	ImGui::SameLine();
+	ImGui::PushStyleColor(ImGuiCol_Button, Color(kFrame));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Color(kFrameHover));
+	ImGui::PushStyleColor(ImGuiCol_Text, Color(kYellow));
+	if (ImGui::Button("?", ImVec2(ImGui::GetFrameHeight(), 0.0f)))
+	{
+		ImGui::OpenPopup("##help");
+	}
+	ImGui::PopStyleColor(3);
+	if (disabled)
+	{
+		ImGui::EndDisabledOverrideReenable();
+	}
+	if (ImGui::BeginPopup("##help"))
+	{
+		ImGui::PushTextWrapPos(ImGui::GetFontSize() * kTouchHelpWidthFonts);
+		ImGui::TextUnformatted(text);
+		ImGui::PopTextWrapPos();
+		ImGui::EndPopup();
+	}
+	ImGui::PopID();
 }
 
 void SectionHeading(const char *text)
@@ -324,6 +403,160 @@ void SectionHeading(const char *text)
 	ImGui::PushStyleColor(ImGuiCol_Text, Color(kYellow));
 	ImGui::SeparatorText(text);
 	ImGui::PopStyleColor();
+}
+
+// Drag-to-scroll with fling for the current window on touch screens (ImGui itself only
+// scrolls with a wheel or the scrollbar). Once a press turns into a vertical drag, the
+// item under the finger is let go, so the swipe doesn't also click it. Call just before
+// ending the window, child or combo.
+struct TouchScroll
+{
+	ImGuiID window = 0;
+	bool dragging = false;
+	bool flinging = false;
+	float velocity = 0.0f;
+	double lastMoveTime = 0.0;
+};
+
+TouchScroll s_touchScroll;
+
+void TouchScrollWindow()
+{
+	if (!kTouchUi)
+	{
+		return;
+	}
+
+	const ImGuiIO &io = ImGui::GetIO();
+	const ImGuiID window = ImGui::GetCurrentWindow()->ID;
+	TouchScroll &scroll = s_touchScroll;
+
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (io.MouseSource == ImGuiMouseSource_TouchScreen) &&
+	    ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+	{
+		scroll = TouchScroll();
+		scroll.window = window;
+	}
+	if (scroll.window != window)
+	{
+		return;
+	}
+
+	if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+	{
+		const ImVec2 drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+		if (!scroll.dragging && (drag.y != 0.0f) && (fabsf(drag.y) > fabsf(drag.x)))
+		{
+			scroll.dragging = true;
+			ImGui::ClearActiveID();
+		}
+		if (scroll.dragging && (io.MouseDelta.y != 0.0f))
+		{
+			ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
+			if (io.DeltaTime > 0.0f)
+			{
+				// Smoothed, so one uneven frame doesn't decide the fling.
+				scroll.velocity = scroll.velocity * 0.5f - io.MouseDelta.y / io.DeltaTime * 0.5f;
+			}
+			scroll.lastMoveTime = ImGui::GetTime();
+		}
+		return;
+	}
+
+	if (scroll.dragging)
+	{
+		scroll.dragging = false;
+		scroll.flinging = (ImGui::GetTime() - scroll.lastMoveTime) < kTouchFlingMaxPause;
+	}
+	if (!scroll.flinging)
+	{
+		scroll.window = 0;
+		return;
+	}
+
+	const float y = ImGui::GetScrollY() + scroll.velocity * io.DeltaTime;
+	ImGui::SetScrollY(y);
+	scroll.velocity *= expf(-kTouchFlingDecay * io.DeltaTime);
+	if ((fabsf(scroll.velocity) < ImGui::GetFontSize() * kTouchFlingStop) || (y <= 0.0f) || (y >= ImGui::GetScrollMaxY()))
+	{
+		scroll.window = 0;
+	}
+}
+
+// Touch screen stand-in for a slider: tap or hold - and + to step the value, so a swipe
+// that scrolls past it can't change it. Steps land on multiples of step. Returns whether
+// the value changed (it applies and saves at once).
+bool StepperInt(const char *label, int *value, int min, int max, int step, const char *format)
+{
+	const int old = *value;
+	const ImGuiStyle &style = ImGui::GetStyle();
+	const float button = ImGui::GetFrameHeight();
+	float valueWidth = ImGui::CalcItemWidth() - 2.0f * (button + style.ItemInnerSpacing.x);
+
+	ImGui::PushID(label);
+	ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
+	if (ImGui::Button("-", ImVec2(button, 0.0f)))
+	{
+		*value = SDL_clamp((*value - 1) / step * step, min, max);
+	}
+	ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+
+	char text[64];
+	snprintf(text, sizeof(text), format, *value);
+	valueWidth = SDL_max(valueWidth, ImGui::CalcTextSize(text).x + style.FramePadding.x * 2.0f);
+	ImGui::PushStyleColor(ImGuiCol_Button, Color(kFrame));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Color(kFrame));
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, Color(kFrame));
+	ImGui::Button(text, ImVec2(valueWidth, 0.0f));
+	ImGui::PopStyleColor(3);
+
+	ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+	if (ImGui::Button("+", ImVec2(button, 0.0f)))
+	{
+		*value = SDL_clamp((*value / step + 1) * step, min, max);
+	}
+	ImGui::PopItemFlag();
+	ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextUnformatted(label);
+	ImGui::PopID();
+	return *value != old;
+}
+
+// One entry of a dropdown, a full row tall on touch screens.
+bool ComboItem(const char *label, bool selected)
+{
+	return ImGui::Selectable(label, selected, ImGuiSelectableFlags_None, kTouchUi ? ImVec2(0.0f, ImGui::GetFrameHeight()) : ImVec2(0.0f, 0.0f));
+}
+
+bool ComboInt(const char *label, int *value, const char *const names[], int count)
+{
+	if (!kTouchUi)
+	{
+		return ImGui::Combo(label, value, names, count);
+	}
+
+	bool changed = false;
+	if (ImGui::BeginCombo(label, ((*value >= 0) && (*value < count)) ? names[*value] : ""))
+	{
+		for (int i = 0; i < count; i++)
+		{
+			ImGui::PushID(i);
+			if (ComboItem(names[i], i == *value))
+			{
+				*value = i;
+				changed = true;
+			}
+			if ((i == *value) && ImGui::IsWindowAppearing())
+			{
+				ImGui::SetItemDefaultFocus();
+			}
+			ImGui::PopID();
+		}
+		TouchScrollWindow();
+		ImGui::EndCombo();
+	}
+	return changed;
 }
 
 // Refresh rate of the display the window is on, rounded (59.94 -> 60); 0 if unknown.
@@ -407,7 +640,7 @@ bool DrawWindowSize(NativeVideoSettings &video, float comboWidth)
 			char label[32];
 			snprintf(label, sizeof(label), "%d x %d", presetWidth, presetHeight);
 			const bool selected = !s_customWindowSize && (presetWidth == currentWidth) && (presetHeight == currentHeight);
-			if (ImGui::Selectable(label, selected))
+			if (ComboItem(label, selected))
 			{
 				s_customWindowSize = false;
 				video.windowWidth = presetWidth;
@@ -416,12 +649,13 @@ bool DrawWindowSize(NativeVideoSettings &video, float comboWidth)
 			}
 		}
 
-		if (ImGui::Selectable("Custom...", s_customWindowSize))
+		if (ComboItem("Custom...", s_customWindowSize))
 		{
 			s_customWindowSize = true;
 			s_customWindowWidth = currentWidth;
 			s_customWindowHeight = currentHeight;
 		}
+		TouchScrollWindow();
 		ImGui::EndCombo();
 	}
 	HelpTooltip("Sizes follow the aspect ratio below, so the picture fills the window without black bars. "
@@ -458,17 +692,31 @@ bool DrawFrameRate(NativeVideoSettings &video, float comboWidth)
 
 	ImGui::BeginDisabled(video.frameRateMatchDisplay != 0);
 	int rate = video.frameRateMatchDisplay ? Platform_GetTargetFrameRate() : video.frameRate;
+	const char *format = rate == NATIVE_FRAME_RATE_ORIGINAL ? "%d fps (original)" : "%d fps";
 	ImGui::SetNextItemWidth(comboWidth);
-	if (ImGui::SliderInt("Frame rate", &rate, NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX,
-	                     rate == NATIVE_FRAME_RATE_ORIGINAL ? "%d fps (original)" : "%d fps", ImGuiSliderFlags_AlwaysClamp))
+	if (kTouchUi)
 	{
-		video.frameRate = rate;
+		if (StepperInt("Frame rate", &rate, NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX, 10, format))
+		{
+			video.frameRate = rate;
+			changed = true;
+		}
 	}
-	changed |= EditCommitted();
+	else
+	{
+		if (ImGui::SliderInt("Frame rate", &rate, NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX, format, ImGuiSliderFlags_AlwaysClamp))
+		{
+			video.frameRate = rate;
+		}
+		changed |= EditCommitted();
+	}
 	ImGui::EndDisabled();
-	ImGui::SetItemTooltip("The game always runs at 30 updates per second. Above 30, extra frames are drawn in between by blending the "
-	                      "camera, karts and objects; gameplay, physics, ghosts and replays are unchanged. Below 30, some frames are "
-	                      "not shown. Menus and loading screens stay at 30. Ctrl+click to type a value.");
+	HelpTooltip(kTouchUi ? "The game always runs at 30 updates per second. Above 30, extra frames are drawn in between by blending the "
+	                       "camera, karts and objects; gameplay, physics, ghosts and replays are unchanged. Below 30, some frames are "
+	                       "not shown. Menus and loading screens stay at 30."
+	                     : "The game always runs at 30 updates per second. Above 30, extra frames are drawn in between by blending the "
+	                       "camera, karts and objects; gameplay, physics, ghosts and replays are unchanged. Below 30, some frames are "
+	                       "not shown. Menus and loading screens stay at 30. Ctrl+click to type a value.");
 
 	const int display = DisplayRefreshRate();
 	char label[48];
@@ -485,13 +733,20 @@ bool DrawInternalResolution(NativeVideoSettings &video, float comboWidth)
 	bool changed = false;
 
 	ImGui::BeginDisabled(video.renderScaleCustom != 0);
+	const char *format = video.renderScale <= 1 ? "1x (original)" : "%dx";
 	ImGui::SetNextItemWidth(comboWidth);
-	ImGui::SliderInt("Internal resolution", &video.renderScale, 1, NATIVE_RENDER_SCALE_MAX, video.renderScale <= 1 ? "1x (original)" : "%dx",
-	                 ImGuiSliderFlags_AlwaysClamp);
-	changed |= EditCommitted();
+	if (kTouchUi)
+	{
+		changed |= StepperInt("Internal resolution", &video.renderScale, 1, NATIVE_RENDER_SCALE_MAX, 1, format);
+	}
+	else
+	{
+		ImGui::SliderInt("Internal resolution", &video.renderScale, 1, NATIVE_RENDER_SCALE_MAX, format, ImGuiSliderFlags_AlwaysClamp);
+		changed |= EditCommitted();
+	}
 	ImGui::EndDisabled();
-	ImGui::SetItemTooltip("Renders the game at a multiple of the original resolution for sharper edges. Above 1x the final image "
-	                      "also skips the PS1's 15-bit colour reduction. Screen effects (blur, heat haze) stay at 1x.");
+	HelpTooltip("Renders the game at a multiple of the original resolution for sharper edges. Above 1x the final image "
+	            "also skips the PS1's 15-bit colour reduction. Screen effects (blur, heat haze) stay at 1x.");
 
 	ImGui::Indent();
 	changed |= CheckboxInt("Custom scale", &video.renderScaleCustom);
@@ -524,7 +779,7 @@ bool DrawAspectRatio(NativeVideoSettings &video, float comboWidth)
 	bool changed = false;
 
 	ImGui::SetNextItemWidth(comboWidth);
-	changed |= ImGui::Combo("Aspect ratio", &video.aspectMode, kAspectModeNames, NATIVE_ASPECT_COUNT);
+	changed |= ComboInt("Aspect ratio", &video.aspectMode, kAspectModeNames, NATIVE_ASPECT_COUNT);
 	HelpTooltip("Original keeps the 4:3 picture. Wider ratios show more of the world, with the HUD kept in its original "
 	            "proportions. Stretch fills the window and distorts the image.");
 
@@ -592,11 +847,15 @@ void DrawVideoTab()
 	Ps1ModeNotice();
 	SectionHeading("Display");
 
-	ImGui::SetNextItemWidth(comboWidth);
-	changed |= ImGui::Combo("Display mode", &video.displayMode, kDisplayModeNames, NATIVE_DISPLAY_COUNT);
-	HelpTooltip("Fullscreen uses the desktop resolution (borderless). F11 or Alt+Enter also toggles it.");
+	// Android is always fullscreen (the host enforces it), so it has no window options.
+	if (!kTouchUi)
+	{
+		ImGui::SetNextItemWidth(comboWidth);
+		changed |= ComboInt("Display mode", &video.displayMode, kDisplayModeNames, NATIVE_DISPLAY_COUNT);
+		HelpTooltip("Fullscreen uses the desktop resolution (borderless). F11 or Alt+Enter also toggles it.");
 
-	changed |= DrawWindowSize(video, comboWidth);
+		changed |= DrawWindowSize(video, comboWidth);
+	}
 	ImGui::BeginDisabled(ps1Mode);
 	changed |= DrawFrameRate(video, comboWidth);
 
@@ -607,18 +866,18 @@ void DrawVideoTab()
 
 	ImGui::BeginDisabled(!NativeSettings_WidescreenActive());
 	ImGui::SetNextItemWidth(comboWidth);
-	changed |= ImGui::Combo("HUD position", &video.hudPosition, kHudPositionNames, NATIVE_HUD_POSITION_COUNT);
+	changed |= ComboInt("HUD position", &video.hudPosition, kHudPositionNames, NATIVE_HUD_POSITION_COUNT);
 	ImGui::EndDisabled();
-	ImGui::SetItemTooltip("Wide ratios only. Screen edges moves the race HUD out to the corners; centre keeps the original 4:3 layout. "
-	                      "Menus always stay centred.");
+	HelpTooltip("Wide ratios only. Screen edges moves the race HUD out to the corners; centre keeps the original 4:3 layout. "
+	            "Menus always stay centred.");
 
 	ImGui::BeginDisabled(video.aspectMode == NATIVE_ASPECT_STRETCH);
 	changed |= CheckboxInt("Integer scaling", &video.integerScaling);
 	ImGui::EndDisabled();
-	ImGui::SetItemTooltip("Scale by whole multiples of the original line count, so every line is the same height. May add wider borders.");
+	HelpTooltip("Scale by whole multiples of the original line count, so every line is the same height. May add wider borders.");
 
 	ImGui::SetNextItemWidth(comboWidth);
-	changed |= ImGui::Combo("Scaling filter", &video.scaleFilter, kScaleFilterNames, NATIVE_SCALE_FILTER_COUNT);
+	changed |= ComboInt("Scaling filter", &video.scaleFilter, kScaleFilterNames, NATIVE_SCALE_FILTER_COUNT);
 	HelpTooltip("How the picture is enlarged to fit the window. Sharp keeps hard pixel edges; smooth blends them.");
 
 	changed |= CheckboxInt("Texture filtering", &video.textureFiltering);
@@ -643,7 +902,7 @@ void DrawVideoTab()
 		changed = true;
 	}
 	ImGui::EndDisabled();
-	ImGui::SetItemTooltip("Restores every video option except the window size.");
+	HelpTooltip("Restores every video option except the window size.");
 
 	if (changed)
 	{
@@ -776,7 +1035,8 @@ bool HandleCaptureEvent(const SDL_Event *event)
 		{
 			return true;
 		}
-		if (event->key.scancode == SDL_SCANCODE_ESCAPE)
+		// NOTE: Android's Back button arrives as F1 (host_sdl.c).
+		if ((event->key.scancode == SDL_SCANCODE_ESCAPE) || (kTouchUi && (event->key.scancode == SDL_SCANCODE_F1)))
 		{
 			s_capture.active = false;
 		}
@@ -986,11 +1246,12 @@ void DrawControllerSection(int player)
 			{
 				snprintf(label, sizeof(label), "%s  (from %s)##pad%d", name, kPlayerNames[other], other);
 			}
-			if (ImGui::Selectable(label, other == player) && (other != player))
+			if (ComboItem(label, other == player) && (other != player))
 			{
 				NativeInput_SwapPlayers(player, other);
 			}
 		}
+		TouchScrollWindow();
 		ImGui::EndCombo();
 	}
 	HelpTooltip("The controller this player uses. Taking one from another player swaps their controllers. "
@@ -1018,17 +1279,23 @@ void DrawBindingsSection(int player)
 	const int padType = LabelGamepadType(player);
 
 	SectionHeading("Bindings");
-	ImGui::TextDisabled("Click a binding, then press the new key or button. Esc cancels, Backspace clears.");
+	ImGui::TextDisabled(kTouchUi ? "Tap a binding, then press the new controller button. Back cancels."
+	                             : "Click a binding, then press the new key or button. Esc cancels, Backspace clears.");
 
+	// The touch layout shows controller bindings only, at full height so the page alone scrolls.
 	const float cellWidth = ImGui::GetFontSize() * 6.5f;
-	const float tableHeight = ImGui::GetFrameHeightWithSpacing() * 9.5f;
-	const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerH;
-	if (ImGui::BeginTable("##bindings", 4, flags, ImVec2(0.0f, tableHeight)))
+	const float tableHeight = kTouchUi ? 0.0f : ImGui::GetFrameHeightWithSpacing() * 9.5f;
+	const ImGuiTableFlags flags = (kTouchUi ? ImGuiTableFlags_None : ImGuiTableFlags_ScrollY) | ImGuiTableFlags_RowBg |
+	                              ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerH;
+	if (ImGui::BeginTable("##bindings", kTouchUi ? 2 : 4, flags, ImVec2(0.0f, tableHeight)))
 	{
 		ImGui::TableSetupScrollFreeze(0, 1);
 		ImGui::TableSetupColumn("PS1 button", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 5.5f);
-		ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, cellWidth);
-		ImGui::TableSetupColumn("Alt key", ImGuiTableColumnFlags_WidthFixed, cellWidth);
+		if (!kTouchUi)
+		{
+			ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthFixed, cellWidth);
+			ImGui::TableSetupColumn("Alt key", ImGuiTableColumnFlags_WidthFixed, cellWidth);
+		}
 		ImGui::TableSetupColumn("Controller", ImGuiTableColumnFlags_WidthFixed, cellWidth * 1.2f);
 		ImGui::TableHeadersRow();
 
@@ -1040,14 +1307,14 @@ void DrawBindingsSection(int player)
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextUnformatted(kPadButtonLabels[button]);
 
-			for (int key = 0; key < NATIVE_KEY_BINDINGS; key++)
+			for (int key = 0; !kTouchUi && (key < NATIVE_KEY_BINDINGS); key++)
 			{
 				ImGui::TableSetColumnIndex(1 + key);
 				FormatKey(input.keyboard[button][key], text, sizeof(text));
 				BindingCell(player, button, key, text, cellWidth);
 			}
 
-			ImGui::TableSetColumnIndex(3);
+			ImGui::TableSetColumnIndex(kTouchUi ? 1 : 3);
 			FormatPadBinding(input.gamepad[button], padType, text, sizeof(text));
 			BindingCell(player, button, BIND_GAMEPAD, text, cellWidth * 1.2f);
 		}
@@ -1082,17 +1349,20 @@ void DrawAnalogSection(int player)
 	SectionHeading("Analog & rumble");
 
 	ImGui::SetNextItemWidth(sliderWidth);
-	changed |= ImGui::SliderInt("Stick deadzone", &input.stickDeadzone, 0, 50, "%d%%");
+	changed |= kTouchUi ? StepperInt("Stick deadzone", &input.stickDeadzone, 0, 50, 5, "%d%%")
+	                    : ImGui::SliderInt("Stick deadzone", &input.stickDeadzone, 0, 50, "%d%%");
 	HelpTooltip("Ignores small stick movements, for worn sticks that drift. 0% passes the stick through unchanged.");
 
 	ImGui::SetNextItemWidth(sliderWidth);
-	changed |= ImGui::SliderInt("Analog press point", &input.analogPressPoint, 10, 90, "%d%%");
+	changed |= kTouchUi ? StepperInt("Analog press point", &input.analogPressPoint, 10, 90, 5, "%d%%")
+	                    : ImGui::SliderInt("Analog press point", &input.analogPressPoint, 10, 90, "%d%%");
 	HelpTooltip("How far a trigger or stick bound to a button must move before it counts as pressed.");
 
 	changed |= CheckboxInt("Rumble", &input.rumble);
 	ImGui::BeginDisabled(!input.rumble);
 	ImGui::SetNextItemWidth(sliderWidth);
-	changed |= ImGui::SliderInt("Rumble strength", &input.rumbleStrength, 0, 100, "%d%%");
+	changed |= kTouchUi ? StepperInt("Rumble strength", &input.rumbleStrength, 0, 100, 10, "%d%%")
+	                    : ImGui::SliderInt("Rumble strength", &input.rumbleStrength, 0, 100, "%d%%");
 	ImGui::EndDisabled();
 
 	ImGui::Spacing();
@@ -1128,7 +1398,7 @@ void DrawAnalogSection(int player)
 	{
 		for (int other = 0; other < NATIVE_INPUT_PLAYERS; other++)
 		{
-			if ((other != player) && ImGui::Selectable(kPlayerNames[other]))
+			if ((other != player) && ComboItem(kPlayerNames[other], false))
 			{
 				const NativePlayerInputSettings &source = g_settings.input.players[other];
 				memcpy(input.gamepad, source.gamepad, sizeof(input.gamepad));
@@ -1139,6 +1409,7 @@ void DrawAnalogSection(int player)
 				changed = true;
 			}
 		}
+		TouchScrollWindow();
 		ImGui::EndCombo();
 	}
 	HelpTooltip("Copies another player's controller bindings and analog settings. Keys stay as they are: each key drives one player.");
@@ -1151,7 +1422,8 @@ void DrawAnalogSection(int player)
 
 void DrawInputTab()
 {
-	ImGui::TextDisabled("Each player has their own controller, keys and settings. One keyboard can drive several players.");
+	ImGui::TextDisabled(kTouchUi ? "Each player has their own controller and settings."
+	                             : "Each player has their own controller, keys and settings. One keyboard can drive several players.");
 
 	if (ImGui::BeginTabBar("##players"))
 	{
@@ -1192,7 +1464,7 @@ bool DrawTweaksGeneral()
 	SectionHeading("Boot");
 
 	ImGui::SetNextItemWidth(comboWidth);
-	changed |= ImGui::Combo("Fast boot", &game.fastBoot, kFastBootNames, NATIVE_FAST_BOOT_COUNT);
+	changed |= ComboInt("Fast boot", &game.fastBoot, kFastBootNames, NATIVE_FAST_BOOT_COUNT);
 	HelpTooltip("Skips the logo screens and the Naughty Dog crate intro; \"Straight to main menu\" also skips the title animation. "
 	            "Takes effect the next time the game starts.");
 
@@ -1337,7 +1609,7 @@ void DrawPresetSection(float comboWidth)
 				ImGui::Separator();
 			}
 			ImGui::PushID(i);
-			if (ImGui::Selectable(NativePreset_Name(i), i == current))
+			if (ComboItem(NativePreset_Name(i), i == current))
 			{
 				NativePreset_Apply(i);
 				s_lastPreset = i;
@@ -1346,6 +1618,7 @@ void DrawPresetSection(float comboWidth)
 			}
 			ImGui::PopID();
 		}
+		TouchScrollWindow();
 		ImGui::EndCombo();
 	}
 	HelpTooltip("Sets the Video picture options and the Tweaks tab in one go. Vanilla is the original game; Enhanced adds "
@@ -1371,7 +1644,9 @@ void DrawPresetSection(float comboWidth)
 				NativePreset_DeleteCustom(current);
 				s_lastPreset = -1;
 			}
-			ImGui::SetItemTooltip("Delete \"%s\". Your current options stay as they are.", NativePreset_Name(current));
+			char help[NATIVE_PRESET_NAME_MAX + 64];
+			snprintf(help, sizeof(help), "Delete \"%s\". Your current options stay as they are.", NativePreset_Name(current));
+			HelpTooltip(help);
 		}
 	}
 	else
@@ -1501,6 +1776,21 @@ void DrawTitle()
 		ImGui::TextUnformatted(NATIVE_PRODUCT_NAME);
 	}
 
+	// Touch screens get a Close button at the right instead of the key hint (Back also closes).
+	if (kTouchUi)
+	{
+		const char *label = "Close";
+		const float width = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 4.0f;
+		ImGui::SameLine();
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - width);
+		ImGui::SetCursorPosY(top + SDL_max((height - ImGui::GetFrameHeight()) * 0.5f, 0.0f));
+		if (ImGui::Button(label, ImVec2(width, 0.0f)))
+		{
+			SetMenuOpen(false, 0);
+		}
+		return;
+	}
+
 	// The hint sits at the right, centred on the logo.
 	const char *hint = (s_menuController != 0) ? "Home / L3 + R3 to close" : "F1 / Esc to close";
 	ImGui::SameLine();
@@ -1509,15 +1799,53 @@ void DrawTitle()
 	ImGui::TextDisabled("%s", hint);
 }
 
+// One tab's page. In the touch layout the header and tabs stay put and only the page
+// scrolls, by dragging.
+void DrawTabPage(void (*draw)())
+{
+	if (!kTouchUi)
+	{
+		draw();
+		return;
+	}
+
+	if (ImGui::BeginChild("##page"))
+	{
+		draw();
+		TouchScrollWindow();
+	}
+	ImGui::EndChild();
+}
+
 void DrawMainWindow()
 {
 	const ImGuiViewport *viewport = ImGui::GetMainViewport();
-	// Stay centred as tabs of different sizes resize the window.
-	ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-	ImGui::SetNextWindowSizeConstraints(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), viewport->WorkSize);
+	ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar;
+	if (kTouchUi)
+	{
+		// The full height of the safe area (clear of notches and rounded corners), at a readable width.
+		ImVec2 pos = viewport->WorkPos;
+		ImVec2 size = viewport->WorkSize;
+		SDL_Rect safe = {};
+		if (SDL_GetWindowSafeArea(s_window, &safe) && (safe.w > 0) && (safe.h > 0))
+		{
+			pos = ImVec2((float)safe.x, (float)safe.y);
+			size = ImVec2((float)safe.w, (float)safe.h);
+		}
+		const float width = SDL_min(size.x, ImGui::GetFontSize() * kTouchMaxWidthFonts);
+		ImGui::SetNextWindowPos(ImVec2(pos.x + (size.x - width) * 0.5f, pos.y));
+		ImGui::SetNextWindowSize(ImVec2(width, size.y));
+		flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+		        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+	}
+	else
+	{
+		// Stay centred as tabs of different sizes resize the window.
+		ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+		ImGui::SetNextWindowSizeConstraints(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), viewport->WorkSize);
+	}
 
 	bool open = true;
-	const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar;
 	if (ImGui::Begin(NATIVE_PRODUCT_NAME, &open, flags))
 	{
 		DrawTitle();
@@ -1527,27 +1855,27 @@ void DrawMainWindow()
 		{
 			if (ImGui::BeginTabItem("Video"))
 			{
-				DrawVideoTab();
+				DrawTabPage(DrawVideoTab);
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Input"))
 			{
-				DrawInputTab();
+				DrawTabPage(DrawInputTab);
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Tweaks"))
 			{
-				DrawTweaksTab();
+				DrawTabPage(DrawTweaksTab);
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Global"))
 			{
-				DrawGlobalTab();
+				DrawTabPage(DrawGlobalTab);
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("About"))
 			{
-				DrawAboutTab();
+				DrawTabPage(DrawAboutTab);
 				ImGui::EndTabItem();
 			}
 			ImGui::EndTabBar();
@@ -1677,6 +2005,13 @@ extern "C" void NativeUI_ProcessEvent(const SDL_Event *event)
 		return;
 	}
 	ImGui_ImplSDL3_ProcessEvent(event);
+
+	// A lifted finger leaves nothing hovered, so no tooltip or highlight stays behind.
+	// ImGui still sees the release at the touch position first.
+	if (kTouchUi && (event->type == SDL_EVENT_MOUSE_BUTTON_UP) && (event->button.which == SDL_TOUCH_MOUSEID))
+	{
+		ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+	}
 }
 
 extern "C" int NativeUI_IsCapturingBinding(void)

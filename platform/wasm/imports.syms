@@ -59,6 +59,7 @@ SDL_GetWindowFromID
 SDL_GetWindowID
 SDL_GetWindowPosition
 SDL_GetWindowRelativeMouseMode
+SDL_GetWindowSafeArea
 SDL_GetWindowSize
 SDL_GetWindowSizeInPixels
 SDL_HideCursor

@@ -389,6 +389,21 @@ u32 w2c_env_SDL_GetWindowSize(struct w2c_env *env, u32 window, u32 outW, u32 out
 	return ok;
 }
 
+u32 w2c_env_SDL_GetWindowSafeArea(struct w2c_env *env, u32 window, u32 outRect)
+{
+	(void)env;
+	SDL_Rect rect = {0, 0, 0, 0};
+	bool ok = SDL_GetWindowSafeArea(H2P(SDL_Window, window), &rect);
+
+	// NOTE: SDL_Rect is four ints, the same on wasm32.
+	if (outRect != 0)
+	{
+		memcpy(HOST_G2H_SIZED(outRect, sizeof(SDL_Rect)), &rect, sizeof(SDL_Rect));
+	}
+
+	return ok;
+}
+
 u32 w2c_env_SDL_SetWindowFullscreen(struct w2c_env *env, u32 window, u32 fullscreen)
 {
 	(void)env;
