@@ -162,9 +162,10 @@ if(CTR_NATIVE_SANDBOX)
 endif()
 
 # In-game settings UI: Dear ImGui is C++, so it builds as its own library and the
-# game code stays C17. Only platform/native_ui.cpp talks to ImGui.
+# game code stays C17. Only platform/native_ui.cpp and native_second_screen_ui.cpp talk to ImGui.
 add_library(ctr_native_ui STATIC
     platform/native_ui.cpp
+    platform/native_second_screen_ui.cpp
     externals/imgui/imgui.cpp
     externals/imgui/imgui_draw.cpp
     externals/imgui/imgui_tables.cpp

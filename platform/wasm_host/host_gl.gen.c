@@ -237,6 +237,12 @@ void w2c_env_glEndQuery(struct w2c_env *env, u32 a0)
 	glEndQuery((GLenum)a0);
 }
 
+void w2c_env_glFlush(struct w2c_env *env)
+{
+	(void)env;
+	glFlush();
+}
+
 void w2c_env_glFramebufferRenderbuffer(struct w2c_env *env, u32 a0, u32 a1, u32 a2, u32 a3)
 {
 	(void)env;

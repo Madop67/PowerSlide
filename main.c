@@ -74,6 +74,7 @@
 #include "platform/native_replay_scheduler.c"
 #include "platform/native_renderer.c"
 #include "platform/native_savestate.c"
+#include "platform/native_second_screen.c"
 #include "platform/native_settings.c"
 #include "platform/native_state.c"
 #include "platform/native_str.c"
