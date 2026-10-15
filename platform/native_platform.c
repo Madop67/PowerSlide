@@ -12,6 +12,7 @@
 #include "platform/native_renderer.h"
 #include "platform/native_replay_scheduler.h"
 #include "platform/native_savestate.h"
+#include "platform/native_second_screen.h"
 #include "platform/native_settings.h"
 #include "platform/native_ui.h"
 
@@ -410,6 +411,7 @@ void Platform_Init(const char *title, int width, int height)
 
 	atexit(Platform_Shutdown);
 	Platform_ApplyVideoSettings();
+	NativeSecondScreen_Apply();
 	Platform_InputInit();
 }
 
@@ -429,6 +431,7 @@ void Platform_Shutdown(void)
 	NativeSettings_Save();
 	Platform_InputShutdown();
 	NativeAudio_Shutdown();
+	NativeSecondScreen_Shutdown();
 	NativeUI_Shutdown();
 	NativeRenderer_Shutdown();
 
@@ -508,6 +511,7 @@ void Platform_EndScene(void)
 		NativeUI_Render();
 		NativeRenderer_EndGpuFrame();
 		NativeRenderer_SwapWindow();
+		NativeSecondScreen_Present();
 		s_pinnedVramDisplayFrames--;
 		if (s_pinnedVramDisplayFrames <= 0)
 		{
@@ -533,6 +537,7 @@ void Platform_EndScene(void)
 #endif
 	NativeRenderer_EndGpuFrame();
 	NativeRenderer_SwapWindow();
+	NativeSecondScreen_Present();
 	NativePerf_EndScope(NATIVE_PERF_BUCKET_PLATFORM_END_SCENE);
 }
 
@@ -614,6 +619,11 @@ void Platform_PollHostEvents(void)
 
 	while (SDL_PollEvent(&event))
 	{
+		// The second screen's window events (close, resize) and taps are its own.
+		if (NativeSecondScreen_ProcessEvent(&event))
+		{
+			continue;
+		}
 		NativeUI_ProcessEvent(&event);
 
 		switch (event.type)

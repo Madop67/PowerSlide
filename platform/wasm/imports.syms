@@ -11,8 +11,10 @@ SDL_DestroyCursor
 SDL_DestroySurface
 SDL_DestroyWindow
 SDL_GL_CreateContext
+SDL_GL_DestroyContext
 SDL_GL_ExtensionSupported
 SDL_GL_GetCurrentContext
+SDL_GL_MakeCurrent
 SDL_GL_SetAttribute
 SDL_GL_SetSwapInterval
 SDL_GL_SwapWindow
@@ -26,7 +28,10 @@ SDL_GetClipboardText
 SDL_GetCurrentAudioDriver
 SDL_GetCurrentDisplayMode
 SDL_GetCurrentVideoDriver
+SDL_GetDisplayBounds
 SDL_GetDisplayForWindow
+SDL_GetDisplayName
+SDL_GetDisplays
 SDL_GetError
 SDL_GetGamepadAxis
 SDL_GetGamepadAxisFromString

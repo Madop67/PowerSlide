@@ -592,6 +592,67 @@ u32 w2c_env_SDL_GetCurrentDisplayMode(struct w2c_env *env, u32 displayID)
 	return s_guestDisplayMode;
 }
 
+// ---- displays (second screen) ----------------------------------------------
+
+u32 w2c_env_SDL_GetDisplays(struct w2c_env *env, u32 outCount)
+{
+	(void)env;
+	int count = 0;
+	SDL_DisplayID *ids = SDL_GetDisplays(&count);
+
+	if (outCount != 0)
+	{
+		memcpy(HOST_G2H_SIZED(outCount, 4), &count, 4);
+	}
+
+	if (ids == NULL)
+	{
+		return 0;
+	}
+
+	// NOTE: Copied into guest memory (zero-terminated like SDL's); the guest
+	// releases it with SDL_free, which frees from guest memory.
+	u32 bytes = (u32)(count + 1) * (u32)sizeof(SDL_DisplayID);
+	u32 guestIds = HostMem_Alloc(bytes);
+	memcpy(HOST_G2H_SIZED(guestIds, bytes), ids, bytes);
+	SDL_free(ids);
+	return guestIds;
+}
+
+u32 w2c_env_SDL_GetDisplayName(struct w2c_env *env, u32 displayID)
+{
+	return HostMem_StringToGuest(env, SDL_GetDisplayName((SDL_DisplayID)displayID));
+}
+
+_Static_assert(sizeof(SDL_Rect) == 16, "SDL_Rect must match the wasm32 layout");
+
+u32 w2c_env_SDL_GetDisplayBounds(struct w2c_env *env, u32 displayID, u32 outRect)
+{
+	(void)env;
+	SDL_Rect rect = {0, 0, 0, 0};
+	bool ok = SDL_GetDisplayBounds((SDL_DisplayID)displayID, &rect);
+
+	if (outRect != 0)
+	{
+		memcpy(HOST_G2H_SIZED(outRect, sizeof(rect)), &rect, sizeof(rect));
+	}
+	return ok;
+}
+
+u32 w2c_env_SDL_GL_MakeCurrent(struct w2c_env *env, u32 window, u32 context)
+{
+	(void)env;
+	return SDL_GL_MakeCurrent(H2P(SDL_Window, window), (SDL_GLContext)HostHandle_ToPtr(context));
+}
+
+u32 w2c_env_SDL_GL_DestroyContext(struct w2c_env *env, u32 context)
+{
+	(void)env;
+	bool ok = SDL_GL_DestroyContext((SDL_GLContext)HostHandle_ToPtr(context));
+	HostHandle_Release(context);
+	return ok;
+}
+
 u32 w2c_env_SDL_GetWindowID(struct w2c_env *env, u32 window)
 {
 	(void)env;

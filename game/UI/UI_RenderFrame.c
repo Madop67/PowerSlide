@@ -1,8 +1,12 @@
 #include <common.h>
 
+#if defined(CTR_NATIVE)
+#include <platform/native_hooks.h>
+#endif
+
 // To do: add a header
 
-// CTR_NATIVE only adds an ST1 map-metadata null guard below.
+// CTR_NATIVE adds an ST1 map-metadata null guard and the HudMinimap hook below.
 void UI_RenderFrame_Racing()
 {
 	s16 sVar1;
@@ -40,6 +44,13 @@ void UI_RenderFrame_Racing()
 
 	struct GameTracker *gGT;
 	gGT = sdata->gGT;
+
+#if defined(CTR_NATIVE)
+	// Cleared when the minimap is shown elsewhere (second screen); the speedometer then
+	// draws in 1P. sdata->HudAndDebugFlags is left alone.
+	int nativeDrawMinimap = 1;
+	NATIVE_HOOK(HudMinimap, &nativeDrawMinimap);
+#endif
 
 	int numPlyr = gGT->numPlyrCurrGame;
 	int gameMode1 = gGT->gameMode1;
@@ -178,7 +189,11 @@ void UI_RenderFrame_Racing()
 			    // numPlyrCurrGame is less than 2 (1P mode)
 			    (numPlyr < 2) &&
 			    // if want to draw speedometer
+#if defined(CTR_NATIVE)
+			    (((sdata->HudAndDebugFlags & 8) != 0) || !nativeDrawMinimap))
+#else
 			    ((sdata->HudAndDebugFlags & 8) != 0))
+#endif
 			{
 				UI_DrawSpeedNeedle(hudStructPtr[UI_HUD_SLOT_SPEEDOMETER].x + offset, hudStructPtr[UI_HUD_SLOT_SPEEDOMETER].y, playerStruct);
 				UI_JumpMeter_Draw(hudStructPtr[UI_HUD_SLOT_JUMP_METER].x, hudStructPtr[UI_HUD_SLOT_JUMP_METER].y, playerStruct);
@@ -742,7 +757,11 @@ void UI_RenderFrame_Racing()
 		}
 	}
 
+#if defined(CTR_NATIVE)
+	if ((levPtrMap != 0) && nativeDrawMinimap)
+#else
 	if (levPtrMap != 0)
+#endif
 	{
 		if (((numPlyr == 1)
 

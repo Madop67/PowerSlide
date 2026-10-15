@@ -8,6 +8,7 @@
 #include <platform/native_branding.h>
 #include <platform/native_input_config.h>
 #include <platform/native_product.h>
+#include <platform/native_second_screen.h>
 #include <platform/native_settings.h>
 #include <platform/native_tweaks.h>
 
@@ -73,6 +74,8 @@ constexpr const char *kAspectModeNames[NATIVE_ASPECT_COUNT] = {"Original (4:3)",
                                                                "Stretch to window"};
 constexpr const char *kScaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"Sharp (nearest)", "Smooth (bilinear)"};
 constexpr const char *kHudPositionNames[NATIVE_HUD_POSITION_COUNT] = {"Screen edges", "Centre (4:3)"};
+constexpr const char *kSecondScreenModeNames[NATIVE_SECOND_SCREEN_MODE_COUNT] = {"Off", "Second display", "Inset (game window)"};
+constexpr const char *kSecondScreenPageNames[NATIVE_SECOND_SCREEN_PAGE_COUNT] = {"Automatic", "Map", "Race", "Lap times"};
 
 // CTR palette, taken from the retail menus: orange and yellow on deep blue.
 constexpr ImU32 Rgb(unsigned r, unsigned g, unsigned b)
@@ -1799,6 +1802,121 @@ void DrawTitle()
 	ImGui::TextDisabled("%s", hint);
 }
 
+// Dual Screen tab: a DS-style second screen (map, race info, lap times) on another
+// display, such as a dual-screen handheld's bottom screen, or inset in the game window.
+void DrawDualScreenTab()
+{
+	NativeSecondScreenSettings &screen = g_settings.secondScreen;
+	bool changed = false;
+	bool apply = false;
+	const float comboWidth = ImGui::GetFontSize() * 12.0f;
+
+	SectionHeading("Second screen");
+	ImGui::SetNextItemWidth(comboWidth);
+	if (ComboInt("Mode", &screen.mode, kSecondScreenModeNames, NATIVE_SECOND_SCREEN_MODE_COUNT))
+	{
+		changed = true;
+		apply = true;
+	}
+	HelpTooltip("Second display shows the track map, race standings and lap times on another display: the bottom screen of a "
+	            "dual-screen handheld, or a second monitor. Inset shows the same panel in a corner of the game window.");
+
+	const int displays = NativeSecondScreen_DisplayCount();
+	ImGui::BeginDisabled((screen.mode != NATIVE_SECOND_SCREEN_DISPLAY) || (displays < 2));
+	ImGui::SetNextItemWidth(comboWidth);
+	const char *preview = (screen.display == 0) ? "Automatic" : NativeSecondScreen_DisplayName(screen.display);
+	if (ImGui::BeginCombo("Display", ((preview != nullptr) && (preview[0] != '\0')) ? preview : "Not connected"))
+	{
+		for (int i = 0; i <= displays; i++)
+		{
+			ImGui::PushID(i);
+			if (ComboItem((i == 0) ? "Automatic" : NativeSecondScreen_DisplayName(i), i == screen.display))
+			{
+				screen.display = i;
+				changed = true;
+				apply = true;
+			}
+			ImGui::PopID();
+		}
+		TouchScrollWindow();
+		ImGui::EndCombo();
+	}
+	ImGui::EndDisabled();
+	HelpTooltip("Automatic uses the first display the game window is not on.");
+
+	if (screen.mode == NATIVE_SECOND_SCREEN_DISPLAY)
+	{
+		const int current = NativeSecondScreen_CurrentDisplay();
+		if (current > 0)
+		{
+			ImGui::TextDisabled("Showing on display %d.", current);
+		}
+		else if (kTouchUi)
+		{
+			ImGui::TextDisabled("Second displays are not supported on this device yet. Inset works.");
+		}
+		else if (displays < 2)
+		{
+			ImGui::TextDisabled("No second display found. The screen opens when one is connected.");
+		}
+		else
+		{
+			ImGui::TextDisabled("The second screen could not open on that display (see the log).");
+		}
+	}
+	ImGui::BeginDisabled(displays < 1);
+	if (ImGui::Button("Identify displays"))
+	{
+		NativeSecondScreen_Identify();
+	}
+	ImGui::EndDisabled();
+	HelpTooltip("Shows each display's number on it for a few seconds.");
+
+	SectionHeading("Second screen pages");
+	ImGui::SetNextItemWidth(comboWidth);
+	changed |= ComboInt("Start page", &screen.startPage, kSecondScreenPageNames, NATIVE_SECOND_SCREEN_PAGE_COUNT);
+	HelpTooltip("The page shown when a race starts. Automatic shows lap times in time trial and relic races and the map in other "
+	            "races. Tap or click the page names on the second screen to switch.");
+
+	changed |= CheckboxInt("Smooth map", &screen.mapSmooth);
+	HelpTooltip("Draw the track map with smooth instead of sharp pixel edges.");
+
+	ImGui::SetNextItemWidth(comboWidth);
+	if (kTouchUi)
+	{
+		changed |= StepperInt("Brightness", &screen.brightness, NATIVE_SECOND_SCREEN_BRIGHTNESS_MIN, NATIVE_SECOND_SCREEN_BRIGHTNESS_MAX, 10, "%d%%");
+	}
+	else
+	{
+		ImGui::SliderInt("Brightness", &screen.brightness, NATIVE_SECOND_SCREEN_BRIGHTNESS_MIN, NATIVE_SECOND_SCREEN_BRIGHTNESS_MAX, "%d%%",
+		                 ImGuiSliderFlags_AlwaysClamp);
+		changed |= EditCommitted();
+	}
+	HelpTooltip("Dims the second screen, for example a bright bottom screen next to a darker game screen.");
+
+	SectionHeading("Game screen");
+	ImGui::BeginDisabled(g_settings.global.ps1Mode != 0);
+	changed |= CheckboxInt("Hide minimap on the game screen", &screen.hideMainMinimap);
+	ImGui::EndDisabled();
+	HelpTooltip("While the second screen shows, the race minimap is left off the game screen. In single player the speedometer "
+	            "takes its corner. Gameplay is unchanged.");
+	if (g_settings.global.ps1Mode)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Text, Color(kOrangeLight));
+		ImGui::TextWrapped("PS1 mode is on: the game screen keeps its minimap.");
+		ImGui::PopStyleColor();
+	}
+
+	if (changed)
+	{
+		NativeSettings_Save();
+	}
+	if (apply)
+	{
+		NativeSecondScreen_Apply();
+	}
+}
+
 // One tab's page. In the touch layout the header and tabs stay put and only the page
 // scrolls, by dragging.
 void DrawTabPage(void (*draw)())
@@ -1856,6 +1974,11 @@ void DrawMainWindow()
 			if (ImGui::BeginTabItem("Video"))
 			{
 				DrawTabPage(DrawVideoTab);
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Dual Screen"))
+			{
+				DrawTabPage(DrawDualScreenTab);
 				ImGui::EndTabItem();
 			}
 			if (ImGui::BeginTabItem("Input"))
@@ -1980,6 +2103,7 @@ extern "C" void NativeUI_Shutdown(void)
 
 	s_initialized = false;
 	DestroyLogoTexture();
+	NativeSecondScreenUI_DestroyTextures();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplSDL3_Shutdown();
 	ImGui::DestroyContext();
@@ -2034,12 +2158,24 @@ extern "C" void NativeUI_Render(void)
 	{
 		UpdateLogoTexture();
 	}
+	NativeSecondScreenUI_UpdateTextures();
 	ImGui_ImplSDL3_NewFrame();
 	ImGui::NewFrame();
+
+	// The inset stays out of the game's own menus unless the settings menu is open.
+	if ((g_settings.secondScreen.mode == NATIVE_SECOND_SCREEN_INSET) && (g_secondScreenState.inRace || s_menuOpen))
+	{
+		NativeSecondScreenUI_DrawInset();
+	}
 
 	if (s_menuOpen)
 	{
 		DrawMainWindow();
+	}
+
+	if (NativeSecondScreen_IdentifyTimeLeft() > 0.0f)
+	{
+		NativeSecondScreenUI_DrawIdentify(NativeSecondScreen_GameDisplay());
 	}
 
 	if (g_settings.video.showFps)

@@ -44,6 +44,8 @@ global_variable const char *const s_aspectModeNames[NATIVE_ASPECT_COUNT] = {"ori
 global_variable const char *const s_scaleFilterNames[NATIVE_SCALE_FILTER_COUNT] = {"sharp", "smooth"};
 global_variable const char *const s_hudPositionNames[NATIVE_HUD_POSITION_COUNT] = {"edges", "centre"};
 global_variable const char *const s_fastBootNames[NATIVE_FAST_BOOT_COUNT] = {"off", "title", "menu"};
+global_variable const char *const s_secondScreenModeNames[NATIVE_SECOND_SCREEN_MODE_COUNT] = {"off", "display", "inset"};
+global_variable const char *const s_secondScreenPageNames[NATIVE_SECOND_SCREEN_PAGE_COUNT] = {"auto", "map", "race", "times"};
 
 // One section per player: [input.player1] .. [input.player4].
 global_variable const char *const s_playerSections[NATIVE_INPUT_PLAYERS] = {"input.player1", "input.player2", "input.player3", "input.player4"};
@@ -56,6 +58,7 @@ global_variable const char *const s_padButtonKeys[NATIVE_PAD_BUTTON_COUNT] = {
 #define NATIVE_GLOBAL_OFFSET(field) offsetof(struct NativeSettings, global.field)
 #define NATIVE_GAME_OFFSET(field)  offsetof(struct NativeSettings, game.field)
 #define NATIVE_VIDEO_OFFSET(field) offsetof(struct NativeSettings, video.field)
+#define NATIVE_SECOND_SCREEN_OFFSET(field) offsetof(struct NativeSettings, secondScreen.field)
 #define NATIVE_PLAYER_OFFSET(player, field)                                                                                 \
 	(offsetof(struct NativeSettings, input.players) + ((size_t)(player) * sizeof(struct NativePlayerInputSettings)) + \
 	 offsetof(struct NativePlayerInputSettings, field))
@@ -95,6 +98,12 @@ global_variable const struct NativeCVar s_fixedDescs[] = {
 	{"video", "frame_rate", NATIVE_CVAR_INT, NATIVE_VIDEO_OFFSET(frameRate), NATIVE_FRAME_RATE_MIN, NATIVE_FRAME_RATE_MAX, NULL, P},
 	{"video", "frame_rate_match_display", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(frameRateMatchDisplay), 0, 1, NULL, P},
 	{"video", "show_fps", NATIVE_CVAR_BOOL, NATIVE_VIDEO_OFFSET(showFps), 0, 1, NULL, 0},
+	{"second_screen", "mode", NATIVE_CVAR_ENUM, NATIVE_SECOND_SCREEN_OFFSET(mode), 0, NATIVE_SECOND_SCREEN_MODE_COUNT - 1, s_secondScreenModeNames, 0},
+	{"second_screen", "display", NATIVE_CVAR_INT, NATIVE_SECOND_SCREEN_OFFSET(display), 0, NATIVE_SECOND_SCREEN_DISPLAY_MAX, NULL, 0},
+	{"second_screen", "start_page", NATIVE_CVAR_ENUM, NATIVE_SECOND_SCREEN_OFFSET(startPage), 0, NATIVE_SECOND_SCREEN_PAGE_COUNT - 1, s_secondScreenPageNames, 0},
+	{"second_screen", "map_smooth", NATIVE_CVAR_BOOL, NATIVE_SECOND_SCREEN_OFFSET(mapSmooth), 0, 1, NULL, 0},
+	{"second_screen", "brightness", NATIVE_CVAR_INT, NATIVE_SECOND_SCREEN_OFFSET(brightness), NATIVE_SECOND_SCREEN_BRIGHTNESS_MIN, NATIVE_SECOND_SCREEN_BRIGHTNESS_MAX, NULL, 0},
+	{"second_screen", "hide_main_minimap", NATIVE_CVAR_BOOL, NATIVE_SECOND_SCREEN_OFFSET(hideMainMinimap), 0, 1, NULL, 0},
 };
 
 #undef P
@@ -240,6 +249,7 @@ void NativeSettings_SetDefaults(struct NativeSettings *settings)
 	settings->video.frameRate = NATIVE_FRAME_RATE_ORIGINAL;
 	settings->video.scaleFilter = NATIVE_SCALE_FILTER_SHARP;
 	settings->video.pauseFullColor = 1;
+	settings->secondScreen.brightness = NATIVE_SECOND_SCREEN_BRIGHTNESS_MAX;
 	NativeSettings_SetInputDefaults(&settings->input);
 }
 

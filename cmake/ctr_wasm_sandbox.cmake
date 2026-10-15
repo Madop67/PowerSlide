@@ -103,6 +103,7 @@ endif()
 
 set(CTR_GUEST_CXX_SOURCES
     platform/native_ui.cpp
+    platform/native_second_screen_ui.cpp
     externals/imgui/imgui.cpp
     externals/imgui/imgui_draw.cpp
     externals/imgui/imgui_tables.cpp

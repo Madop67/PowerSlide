@@ -84,6 +84,8 @@ CTR_WASM_GL_IMPORT(glEnable) void glEnable(GLenum cap);
 CTR_WASM_GL_IMPORT(glEnableVertexAttribArray) void glEnableVertexAttribArray(GLuint index);
 #undef glEndQuery
 CTR_WASM_GL_IMPORT(glEndQuery) void glEndQuery(GLenum target);
+#undef glFlush
+CTR_WASM_GL_IMPORT(glFlush) void glFlush(void);
 #undef glFramebufferRenderbuffer
 CTR_WASM_GL_IMPORT(glFramebufferRenderbuffer) void glFramebufferRenderbuffer(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
 #undef glFramebufferTexture2D

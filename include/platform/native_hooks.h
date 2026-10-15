@@ -38,7 +38,10 @@ struct NativeBootHook
 	X(AfterPresent, (struct GameTracker * gGT), (gGT))                                             \
 	/* Character select asks whether a locked-by-default character is unlocked; set */           \
 	/* *unlocked to override the save's answer. */                                                \
-	X(CharacterUnlocked, (int *unlocked), (unlocked))
+	X(CharacterUnlocked, (int *unlocked), (unlocked))                                              \
+	/* The race HUD is about to draw the minimap (1P, or 3P's fourth quarter); clear *draw to */  \
+	/* leave it out. In 1P the speedometer then takes its corner. Draw-only: no game state. */     \
+	X(HudMinimap, (int *draw), (draw))
 
 #define NATIVE_HOOK_DECLARE(name, params, args)                  \
 	typedef void(*NativeHook_##name##_Fn) params;                \

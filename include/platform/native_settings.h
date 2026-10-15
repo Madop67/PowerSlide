@@ -179,6 +179,48 @@ struct NativeGameSettings
 	int turboCounter;
 };
 
+// second_screen.mode. Saved by name.
+enum NativeSecondScreenMode
+{
+	NATIVE_SECOND_SCREEN_OFF = 0,
+	// A borderless window on another display (the bottom screen of a dual-screen handheld).
+	NATIVE_SECOND_SCREEN_DISPLAY,
+	// Picture-in-picture inside the main window; works with one display.
+	NATIVE_SECOND_SCREEN_INSET,
+	NATIVE_SECOND_SCREEN_MODE_COUNT
+};
+
+// second_screen.start_page. Saved by name.
+enum NativeSecondScreenPage
+{
+	// Times in time trial and relic race, the map in other races.
+	NATIVE_SECOND_SCREEN_PAGE_AUTO = 0,
+	NATIVE_SECOND_SCREEN_PAGE_MAP,
+	NATIVE_SECOND_SCREEN_PAGE_RACE,
+	NATIVE_SECOND_SCREEN_PAGE_TIMES,
+	NATIVE_SECOND_SCREEN_PAGE_COUNT
+};
+
+#define NATIVE_SECOND_SCREEN_BRIGHTNESS_MIN 20
+#define NATIVE_SECOND_SCREEN_BRIGHTNESS_MAX 100
+// Highest second_screen.display index (1-based; 0 = auto).
+#define NATIVE_SECOND_SCREEN_DISPLAY_MAX 8
+
+// Menu's Dual Screen tab. Display layout, so not part of presets.
+struct NativeSecondScreenSettings
+{
+	int mode;
+	// 0 = the first display that is not the main window's; otherwise a 1-based display index.
+	int display;
+	int startPage;
+	// Map drawn with smooth instead of nearest filtering.
+	int mapSmooth;
+	// Percent.
+	int brightness;
+	// The race minimap moves off the main screen while the second screen shows.
+	int hideMainMinimap;
+};
+
 struct NativeGlobalSettings
 {
 	// Runs every preset setting at its retail value (see NativeSettings_RefreshPs1Mode);
@@ -192,6 +234,7 @@ struct NativeSettings
 	struct NativeGameSettings game;
 	struct NativeVideoSettings video;
 	struct NativeInputSettings input;
+	struct NativeSecondScreenSettings secondScreen;
 };
 
 extern struct NativeSettings g_settings;
