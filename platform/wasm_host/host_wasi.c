@@ -1,4 +1,5 @@
-// Minimal POSIX-backed WASI preview1 host for the macOS wasm sandbox build.
+// Minimal POSIX-backed WASI preview1 host for the wasm sandbox build (macOS,
+// Linux, Android).
 //
 // Implements the subset of wasi_snapshot_preview1 that wasi-libc needs for the
 // game's stdio, file, directory and clock use. Guest fds index a small table of
@@ -14,6 +15,10 @@
 #include <sys/uio.h>
 #include <time.h>
 #include <unistd.h>
+
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <sys/random.h>
+#endif
 
 #include "host_mem.h"
 #include "host_wasi.h"
@@ -103,6 +108,14 @@ void HostWasi_Init(int argc, char **argv)
 	s_fds[2].hostFd = STDERR_FILENO;
 
 	s_fds[HOST_WASI_PREOPEN_FD].hostFd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+#if defined(O_PATH)
+	// NOTE: Android's SELinux policy lets apps walk through "/" but not read
+	// it. An O_PATH descriptor still works as the base for openat().
+	if ((s_fds[HOST_WASI_PREOPEN_FD].hostFd < 0) && (errno == EACCES))
+	{
+		s_fds[HOST_WASI_PREOPEN_FD].hostFd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
+	}
+#endif
 	s_fds[HOST_WASI_PREOPEN_FD].isPreopen = 1;
 	if (s_fds[HOST_WASI_PREOPEN_FD].hostFd < 0)
 	{
@@ -207,9 +220,15 @@ static void HostWasi_WriteFilestat(u32 out, const struct stat *st)
 	uint64_t ino = (uint64_t)st->st_ino;
 	uint64_t nlink = (uint64_t)st->st_nlink;
 	uint64_t size = (uint64_t)st->st_size;
+#if defined(__APPLE__)
 	uint64_t atim = HostWasi_TimespecNs(st->st_atimespec);
 	uint64_t mtim = HostWasi_TimespecNs(st->st_mtimespec);
 	uint64_t ctim = HostWasi_TimespecNs(st->st_ctimespec);
+#else
+	uint64_t atim = HostWasi_TimespecNs(st->st_atim);
+	uint64_t mtim = HostWasi_TimespecNs(st->st_mtim);
+	uint64_t ctim = HostWasi_TimespecNs(st->st_ctim);
+#endif
 
 	memcpy(dst + 0, &dev, 8);
 	memcpy(dst + 8, &ino, 8);
@@ -356,7 +375,25 @@ u32 w2c_wasi__snapshot__preview1_clock_res_get(struct w2c_wasi__snapshot__previe
 u32 w2c_wasi__snapshot__preview1_random_get(struct w2c_wasi__snapshot__preview1 *ctx, u32 buf, u32 len)
 {
 	(void)ctx;
-	arc4random_buf(HOST_G2H_SIZED(buf, len), len);
+	uint8_t *out = HOST_G2H_SIZED(buf, len);
+#if defined(__linux__) && !defined(__ANDROID__)
+	// NOTE: glibc only has arc4random_buf from 2.36; getrandom is 2.25+.
+	for (u32 done = 0; done < len;)
+	{
+		ssize_t got = getrandom(&out[done], len - done, 0);
+		if (got < 0)
+		{
+			if (errno == EINTR)
+			{
+				continue;
+			}
+			return WASI_ERRNO_IO;
+		}
+		done += (u32)got;
+	}
+#else
+	arc4random_buf(out, len);
+#endif
 	return WASI_ERRNO_SUCCESS;
 }
 

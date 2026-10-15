@@ -1,4 +1,4 @@
-// Host-side SDL3 imports for the macOS wasm sandbox build.
+// Host-side SDL3 imports for the wasm sandbox build.
 //
 // The guest is compiled against the same SDL3 headers, so plain-data structs
 // (SDL_AudioSpec, most SDL_Event variants) have identical layouts on wasm32 and
@@ -10,6 +10,10 @@
 #include <SDL3/SDL.h>
 
 #include "host_mem.h"
+
+#if defined(__ANDROID__)
+#include "host_gl.h"
+#endif
 
 #define H2P(type, handle) ((type *)HostHandle_ToPtr(handle))
 
@@ -311,6 +315,15 @@ u32 w2c_env_SDL_PollEvent(struct w2c_env *env, u32 eventOut)
 			continue;
 		}
 
+#if defined(__ANDROID__)
+		// NOTE: Android's Back button opens and closes the menu, as F1 does.
+		if (((event.type == SDL_EVENT_KEY_DOWN) || (event.type == SDL_EVENT_KEY_UP)) && (event.key.scancode == SDL_SCANCODE_AC_BACK))
+		{
+			event.key.scancode = SDL_SCANCODE_F1;
+			event.key.key = SDLK_F1;
+		}
+#endif
+
 		HostSDL_RefreshKeyboardMirror();
 		memcpy(HOST_G2H_SIZED(eventOut, sizeof(SDL_Event)), &event, sizeof(SDL_Event));
 		return 1;
@@ -336,6 +349,10 @@ u32 w2c_env_SDL_GetScancodeFromName(struct w2c_env *env, u32 name)
 u32 w2c_env_SDL_CreateWindow(struct w2c_env *env, u32 title, u32 w, u32 h, u64 flags)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	// NOTE: A phone has one screen; fullscreen also hides the system bars.
+	flags |= SDL_WINDOW_FULLSCREEN;
+#endif
 	return HostHandle_FromPtr(SDL_CreateWindow(HostSDL_Str(title), (int)w, (int)h, (SDL_WindowFlags)flags));
 }
 
@@ -375,7 +392,13 @@ u32 w2c_env_SDL_GetWindowSize(struct w2c_env *env, u32 window, u32 outW, u32 out
 u32 w2c_env_SDL_SetWindowFullscreen(struct w2c_env *env, u32 window, u32 fullscreen)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	// NOTE: Android has no windowed mode; "Windowed" would only show the system bars.
+	(void)fullscreen;
+	return SDL_SetWindowFullscreen(H2P(SDL_Window, window), true);
+#else
 	return SDL_SetWindowFullscreen(H2P(SDL_Window, window), fullscreen != 0);
+#endif
 }
 
 u32 w2c_env_SDL_SetWindowIcon(struct w2c_env *env, u32 window, u32 icon)
@@ -388,11 +411,29 @@ u32 w2c_env_SDL_GL_SetAttribute(struct w2c_env *env, u32 attr, u32 value)
 {
 	(void)env;
 
+#if defined(__ANDROID__)
+	// NOTE: Whatever desktop version the guest asks for, Android gets an
+	// OpenGL ES 3.0 context (host_gles.h covers the differences).
+	switch ((SDL_GLAttr)attr)
+	{
+	case SDL_GL_CONTEXT_PROFILE_MASK:
+		return SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+	case SDL_GL_CONTEXT_MAJOR_VERSION:
+		return SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	case SDL_GL_CONTEXT_MINOR_VERSION:
+		return SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+	case SDL_GL_CONTEXT_FLAGS:
+		return SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, (int)value & ~SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+	default:
+		break;
+	}
+#else
 	// NOTE: macOS only provides core profiles 3.2+ as forward-compatible contexts.
 	if (((SDL_GLAttr)attr == SDL_GL_CONTEXT_PROFILE_MASK) && ((int)value == SDL_GL_CONTEXT_PROFILE_CORE))
 	{
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 	}
+#endif
 
 	return SDL_GL_SetAttribute((SDL_GLAttr)attr, (int)value);
 }
@@ -400,7 +441,23 @@ u32 w2c_env_SDL_GL_SetAttribute(struct w2c_env *env, u32 attr, u32 value)
 u32 w2c_env_SDL_GL_CreateContext(struct w2c_env *env, u32 window)
 {
 	(void)env;
+
+#if defined(__ANDROID__)
+	// NOTE: SDL's minimum is 3/3/2 bits, which EGL may meet with RGB565.
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+
+	SDL_GLContext context = SDL_GL_CreateContext(H2P(SDL_Window, window));
+	if (context != NULL)
+	{
+		HostGLES_InitContext();
+	}
+	return HostHandle_FromPtr(context);
+#else
 	return HostHandle_FromPtr(SDL_GL_CreateContext(H2P(SDL_Window, window)));
+#endif
 }
 
 u32 w2c_env_SDL_GL_ExtensionSupported(struct w2c_env *env, u32 extension)

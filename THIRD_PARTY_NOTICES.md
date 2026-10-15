@@ -98,8 +98,8 @@ Path: `externals/wasm2c-rt`
 
 Source: <https://github.com/WebAssembly/wabt>
 
-The wasm2c runtime supports the macOS build, which runs the game as a wasm32
-module translated to C by `wasm2c`. Vendored version: 1.0.37. The generated
+The wasm2c runtime supports the sandbox builds (macOS, Linux x86_64, Android),
+which run the game as a wasm32 module translated to C by `wasm2c`. Vendored version: 1.0.37. The generated
 guest C code is also wasm2c output.
 
 Licensed under the Apache License, Version 2.0. The full license text is in
@@ -111,9 +111,9 @@ Path: `externals/libchdr`
 
 Source: <https://github.com/rtissera/libchdr>
 
-libchdr reads `.chd` disc images in the macOS app's first-run setup, which
-converts them to the raw disc image the game reads. It is linked into the
-macOS host only. Vendored commit: `47d794151b2b64f6aba60304e6480f4f5a2bc24b`.
+libchdr reads `.chd` disc images in first-run setup (every release build:
+Windows, Linux, macOS and Android), which converts them to the raw disc image
+the game reads. It is never part of the game code itself. Vendored commit: `47d794151b2b64f6aba60304e6480f4f5a2bc24b`.
 
 Copyright Romain Tisserand. Licensed under the BSD 3-Clause License; the full
 text is in `externals/libchdr/LICENSE.txt`.

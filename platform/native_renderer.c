@@ -1021,15 +1021,18 @@ internal int NativeRenderer_Shader_CheckProgramStatus(GLuint program)
 
 internal ShaderID NativeRenderer_Shader_Compile(const char *source, bool isPsxShader)
 {
+	// NOTE: Desktop GLSL ignores precision qualifiers. The Android host turns
+	// these shaders into GLSL ES, where lowp ints are too narrow for VRAM and
+	// CLUT coordinates, hence highp.
 	const char *GLSL_HEADER_VERT = "	#version 140\n"
-	                               "	precision lowp  int;\n"
+	                               "	precision highp int;\n"
 	                               "	precision highp float;\n"
 	                               "	#define varying   out\n"
 	                               "	#define attribute in\n"
 	                               "	#define texture2D texture\n";
 
 	const char *GLSL_HEADER_FRAG = "	#version 140\n"
-	                               "	precision lowp  int;\n"
+	                               "	precision highp int;\n"
 	                               "	precision highp float;\n"
 	                               "	#define varying     in\n"
 	                               "	#define texture2D   texture\n"

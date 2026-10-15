@@ -7,8 +7,8 @@
 #import <AppKit/AppKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-#include "host_disc_import.h"
 #include "host_setup_macos.h"
+#include "setup/disc_import.h"
 
 #include "platform/native_product.h"
 
@@ -24,13 +24,13 @@ static NSString *HostSetup_AssetsDir(NSString *baseDir)
 
 static NSString *HostSetup_DiscPath(NSString *baseDir)
 {
-	return [HostSetup_AssetsDir(baseDir) stringByAppendingPathComponent:@HOST_DISC_IMPORT_BIN_NAME];
+	return [HostSetup_AssetsDir(baseDir) stringByAppendingPathComponent:@DISC_IMPORT_BIN_NAME];
 }
 
 static int HostSetup_HasUsableDisc(NSString *baseDir)
 {
 	char err[256];
-	return HostDiscImport_Check(HostSetup_DiscPath(baseDir).fileSystemRepresentation, err, sizeof(err));
+	return DiscImport_Check(HostSetup_DiscPath(baseDir).fileSystemRepresentation, err, sizeof(err));
 }
 
 static NSTextField *HostSetup_Label(NSString *text, NSFont *font)
@@ -248,8 +248,8 @@ static void HostSetup_Progress(void *user, uint64_t done, uint64_t total)
 
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
 		char err[512] = "";
-		int ok = HostDiscImport_Run(source.fileSystemRepresentation, assetsDir.fileSystemRepresentation, HostSetup_Progress, (__bridge void *)self,
-		                            &self->_cancel, err, sizeof(err));
+		int ok = DiscImport_Run(source.fileSystemRepresentation, assetsDir.fileSystemRepresentation, HostSetup_Progress, (__bridge void *)self,
+		                        &self->_cancel, err, sizeof(err));
 		NSString *message = [NSString stringWithUTF8String:err];
 
 		dispatch_async(dispatch_get_main_queue(), ^{
@@ -379,7 +379,10 @@ int HostSetup_Run(char *baseDir, size_t baseDirSize)
 
 		BOOL hasDisc = HostSetup_HasUsableDisc(base);
 		BOOL optionHeld = (NSEvent.modifierFlags & NSEventModifierFlagOption) != 0;
-		if (hasDisc && !optionHeld)
+		// The menu's "Change disc image…" leaves this file behind and quits.
+		NSString *request = [base stringByAppendingPathComponent:@NATIVE_SETUP_REQUEST_FILE];
+		BOOL requested = [NSFileManager.defaultManager removeItemAtPath:request error:nil];
+		if (hasDisc && !optionHeld && !requested)
 		{
 			return 1;
 		}

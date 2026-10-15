@@ -11,7 +11,7 @@ Code, file and target names still say `ctr_native` (for example `ctr_native.exe`
 ## Philosophy
 
 - **No byte budget.** Game source lives in `game/` as our own copies. Edit freely.
-- **No PSX toolchain.** Targets Windows and Linux with SDL3. No MIPS compiler needed.
+- **No PSX toolchain.** Targets Windows, Linux, macOS and Android with SDL3. No MIPS compiler needed.
 - **Clean platform layer.** `main.c` owns process startup; host details stay in `platform/native_*`.
 - **No build system nonsense.** Just `build.bat` / `build.sh`.
 - **Fully static build.** Single executable, zero dependencies. SDL3 is compiled from vendored source and linked statically.
@@ -24,7 +24,11 @@ ctr_native/
   platform/           Native-owned audio, input, memcard, CD, and PSX facade glue
   build-msvc.bat      Windows build (MSVC x86)
   build.bat           Windows build (MinGW i686)
-  build.sh            Linux build
+  build.sh            Linux build (i686, for development, matching and replays)
+  build-linux-x64.sh  Linux x86_64 release build (wasm sandbox)
+  build-macos.sh      macOS build (wasm sandbox) and DMG
+  build-android.sh    Android APK (wasm sandbox)
+  android/            Android Gradle project (SDLActivity wrapper)
   CMakePresets.json   Shared CLion/command-line CMake configurations
   README.md           This file
   game/               Our copies of all decompiled game source (943 files)
@@ -72,11 +76,32 @@ sudo apt install libx11-dev libxext-dev libgl1-mesa-dev libasound2-dev libudev-d
 brew install cmake
 ```
 
-`build-macos.sh` downloads the pinned wasm toolchain (wasi-sdk 25, WABT 1.0.37) into `externals/.toolchains/` on first run.
+`build-macos.sh` downloads the pinned wasm toolchain (wasi-sdk 25, WABT 1.0.37) into `externals/.toolchains/` on first run (`tools/wasm/fetch-toolchain.sh`).
 
 macOS cannot run 32-bit executables, and the game depends on 32-bit pointers (retail struct layouts and asset files patched with 4-byte pointers). The macOS build therefore compiles the game to wasm32, which is also a 32-bit-pointer target, translates it back to C with `wasm2c`, and links it into a native arm64 executable. A small host layer in `platform/wasm_host/` provides file I/O (WASI), SDL3 and OpenGL. See `cmake/ctr_wasm_sandbox.cmake` for details. The in-game settings menu (Dear ImGui) is compiled into the wasm module too. If the renderer or the menu starts calling a new GL function, rerun `tools/macos/gen_wasm_gl_bridge.py`; a new SDL function goes in `platform/wasm/imports.syms` and `platform/wasm_host/host_sdl.c`.
 
 To get the disc image from a `.chd` for the bare `build-macos/ctr_native`: `brew install rom-tools`, then `chdman extractcd -i game.chd -o assets/ctr-u.cue -ob assets/ctr-u.bin`. The app bundle below reads `.chd` files itself.
+
+### Linux x86_64 release build
+
+```
+sudo apt install cmake build-essential python3 curl libx11-dev libxext-dev libxcursor-dev libxi-dev \
+  libxrandr-dev libxfixes-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev \
+  libdrm-dev libgbm-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+./build-linux-x64.sh
+```
+
+The release Linux build uses the same wasm sandbox as macOS, so it is a 64-bit binary that needs no 32-bit libraries. `build-linux-x64.sh` fetches the wasm toolchain (x86_64 build hosts only), builds `build-linux-x64/ctr_native`, runs ctest (including a check that the binary links nothing but glibc and libGL) and writes `dist/PowerSlide-<version>-linux-x86_64.tar.gz` (`--no-package` skips it). The i686 `build.sh` build stays for development, the matching check and the replay suite.
+
+### Android
+
+Install Android Studio (or the SDK command-line tools) with an NDK and CMake, then:
+
+```
+./build-android.sh
+```
+
+Android also runs the wasm sandbox: the same guest, compiled with the NDK into `libmain.so` inside SDL's `SDLActivity` (`android/`). The host maps the game's OpenGL 3.3 calls onto OpenGL ES 3.0 (`platform/wasm_host/host_gles.c`), so the game code needs no Android changes. The script finds the SDK (`ANDROID_HOME`, or the default Android Studio location), the newest NDK and CMake, and Android Studio's JDK, and writes `dist/PowerSlide-<version>-android.apk` (arm64-v8a and x86_64). The APK is signed with the debug key unless `ANDROID_KEYSTORE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` are set. Play with a Bluetooth or USB controller; Back opens the menu, which works by touch.
 
 #### PowerSlide.app and the DMG
 
@@ -95,6 +120,9 @@ build.bat            # Windows, MinGW i686
 chmod +x build.sh
 ./build.sh           # Linux
 ./build-macos.sh     # macOS (Apple Silicon)
+./build-linux-x64.sh # Linux x86_64 release (wasm sandbox)
+./build-android.sh   # Android APK
+build-msvc.bat --package  # Windows: also writes the release zip
 ```
 
 The shared CMake presets can also be used directly or selected as CLion CMake profiles:
@@ -113,6 +141,9 @@ Output:
 - MinGW: `build/ctr_native.exe`
 - Linux: `build/ctr_native`
 - macOS: `build-macos/ctr_native`, `build-macos/PowerSlide.app` and `dist/PowerSlide-<version>-macos-arm64.dmg`
+- Linux x86_64: `build-linux-x64/ctr_native` and `dist/PowerSlide-<version>-linux-x86_64.tar.gz`
+- Android: `dist/PowerSlide-<version>-android.apk`
+- Windows release zip: `dist/PowerSlide-<version>-windows-x86.zip`
 
 ### Clean build
 
@@ -129,9 +160,20 @@ rm -rf build/        # Linux: delete cached libraries
 
 ## Running
 
-### Normal Setup
+### Release builds
 
-If you downloaded a release build, you only need two things for normal play:
+Every release is a single program: `PowerSlide.exe` (Windows), `powerslide` (Linux x86_64), `PowerSlide.app` (macOS) or the APK (Android). The first time it starts, a setup dialog asks for your own NTSC-U disc image (`.cue` + `.bin`, `.bin` or `.chd`; on Android `.bin` or `.chd`), checks it is SCUS-94426, and copies or converts it into a per-user data folder, which also holds settings, memory cards and logs:
+
+- Windows: `%APPDATA%\PowerSlide`
+- Linux: `~/.local/share/PowerSlide`
+- macOS: `~/Library/Application Support/PowerSlide`
+- Android: `Android/data/io.github.madop67.powerslide/files` on the device's shared storage
+
+To use a different disc image, choose **Change disc image...** in the menu's About tab, or hold Shift (Windows) / Option (macOS) at launch, or pass `--setup` (Windows, Linux). If the game stops with an error, a message box offers **Show Log**.
+
+### Portable and development setup
+
+A build that finds `assets/` next to its executable (or one or two folders up, as in a checkout) skips setup and keeps everything in that folder. You need two things:
 
 1. The game executable:
    - `ctr_native.exe` on Windows

@@ -80,6 +80,8 @@ bool s_initialized = false;
 bool s_menuOpen = false;
 // Controller that opened the menu and navigates it; 0 when the keyboard and mouse drive it.
 SDL_JoystickID s_menuController = 0;
+// Set by main.c for packaged builds, which have first-run disc setup.
+bool s_discChangeEnabled = false;
 // Input tab's player to select when it next draws (the player whose controller opened the menu), or -1.
 int s_selectPlayerTab = -1;
 float s_styleScale = 0.0f;
@@ -1464,6 +1466,25 @@ void DrawAboutTab()
 		quit.type = SDL_EVENT_QUIT;
 		SDL_PushEvent(&quit);
 	}
+
+	// The launcher (platform/setup/, or the macOS app's setup window) sees the
+	// request file at the next start and asks for a new disc image.
+	if (s_discChangeEnabled)
+	{
+		ImGui::SameLine();
+		if (ImGui::Button("Change disc image..."))
+		{
+			FILE *request = fopen(NATIVE_SETUP_REQUEST_FILE, "wb");
+			if (request != NULL)
+			{
+				fclose(request);
+				SDL_Event quit = {};
+				quit.type = SDL_EVENT_QUIT;
+				SDL_PushEvent(&quit);
+			}
+		}
+		ImGui::TextDisabled("Quits; the next start asks for a disc image.");
+	}
 }
 
 void DrawTitle()
@@ -1698,6 +1719,11 @@ extern "C" void NativeUI_Render(void)
 extern "C" int NativeUI_IsMenuOpen(void)
 {
 	return s_menuOpen ? 1 : 0;
+}
+
+extern "C" void NativeUI_EnableDiscChange(void)
+{
+	s_discChangeEnabled = true;
 }
 
 extern "C" void NativeUI_ToggleMenu(void)

@@ -22,7 +22,7 @@ if ! command -v cmake &>/dev/null; then
     exit 1
 fi
 
-./tools/macos/fetch-toolchain.sh
+./tools/wasm/fetch-toolchain.sh
 
 cmake -S . -B build-macos -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 cmake --build build-macos -j"$(sysctl -n hw.ncpu)"
