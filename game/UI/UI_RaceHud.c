@@ -537,7 +537,8 @@ UpdateTrackerState:
 
 #if defined(CTR_NATIVE)
 // Big-field races rank down to 24th. Retail's suffix table and 3D big number only
-// go to 8th, so from 9th the number is drawn as text and the model is hidden.
+// go to 8th, so from 9th the instance draws a native model of the place built from
+// retail's digits; should that fail, the number is drawn as text and the model hidden.
 static u8 s_bigFieldHidBigNum[4];
 
 static void UI_DrawPosSuffix_NativeBigField(s16 posX, s16 posY, struct Driver *d, s16 flags)
@@ -565,17 +566,30 @@ static void UI_DrawPosSuffix_NativeBigField(s16 posX, s16 posY, struct Driver *d
 
 	DecalFont_DrawLine(sdata->lngStrings[suffix], posX, posY, FONT_BIG, flags);
 
-	if (d->driverRank < 8)
+	if (bigNum != 0)
 	{
-		if (bigNum != 0)
+		struct Model *retailModel = sdata->gGT->modelPtr[STATIC_BIG1];
+		struct Model *placeModel = (d->driverRank < 8) ? retailModel : NativeBigField_PlaceModel(retailModel, place);
+
+		if (placeModel != 0)
 		{
 			if (*hidBigNum)
 			{
 				bigNum->flags &= ~HIDE_MODEL;
 				*hidBigNum = 0;
 			}
-			bigNum->matrix.t[2] = (d->driverRank + UI_POS_SUFFIX_BIG_NUM_Z_BASE);
+			if ((bigNum->model == retailModel) || NativeBigField_IsPlaceModel(bigNum->model))
+			{
+				bigNum->model = placeModel;
+			}
+			// Retail picks the digit by depth; a place model has one header for any depth.
+			bigNum->matrix.t[2] = ((d->driverRank < 8) ? d->driverRank : 7) + UI_POS_SUFFIX_BIG_NUM_Z_BASE;
+			return;
 		}
+	}
+
+	if (d->driverRank < 8)
+	{
 		return;
 	}
 

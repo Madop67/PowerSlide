@@ -118,4 +118,13 @@ void NativeBigField_AfterAdjustDifficulty(struct GameTracker *gGT);
 const SVec3 *NativeBigField_SpawnPos(struct Level *level, int index);
 const SVec3 *NativeBigField_SpawnRot(struct Level *level, int index);
 
+struct Model;
+
+// HUD big number for place (9..24) as a one-header model built from source, retail's
+// STATIC_BIG1 digits 1-8 (see native_big_number.c). NULL for other places, or when
+// source isn't the model expected.
+struct Model *NativeBigField_PlaceModel(struct Model *source, int place);
+// Whether model is one of NativeBigField_PlaceModel's.
+int NativeBigField_IsPlaceModel(const struct Model *model);
+
 #endif

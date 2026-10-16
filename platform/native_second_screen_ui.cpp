@@ -4,6 +4,7 @@
 // second window (its own ImGui context, sharing the menu's font atlas) or as an inset
 // in the main window.
 
+#include <platform/native_branding.h>
 #include <platform/native_product.h>
 #include <platform/native_second_screen.h>
 #include <platform/native_settings.h>
@@ -74,6 +75,9 @@ int s_mapHeight = 0;
 int s_pageOverride = -1;
 // Highest speed seen this race, for the speed bar.
 int s_topSpeed = 1;
+// Idle card logo, resampled to the pixel height it was last drawn at (s_logoWantHeight).
+ImTextureData *s_logoTexture = nullptr;
+int s_logoWantHeight = 0;
 
 // ---- formatting ---------------------------------------------------------------
 
@@ -516,7 +520,23 @@ void DrawIdlePage(const Panel &panel, const NativeSecondScreenState &state, ImVe
 	const float u = panel.unit;
 	const float centreX = (min.x + max.x) * 0.5f;
 	const float centreY = (min.y + max.y) * 0.5f;
-	Text(panel, u * 2.4f, ImVec2(centreX, centreY - u * 2.4f), kYellow, NATIVE_PRODUCT_NAME, 0.5f);
+	int logoWidth = 0;
+	int logoHeight = 0;
+	NativeBranding_GetLogo(&logoWidth, &logoHeight);
+	const float height = SDL_min(u * 3.0f, (max.x - min.x) * 0.9f * (float)logoHeight / (float)logoWidth);
+	const float width = height * (float)logoWidth / (float)logoHeight;
+	const float top = centreY - u * 1.0f - height;
+	// The texture follows the drawn size in pixels; until it is ready, the name stands in.
+	s_logoWantHeight = SDL_clamp((int)(height * ImGui::GetIO().DisplayFramebufferScale.y + 0.5f), 1, logoHeight);
+	if ((s_logoTexture != nullptr) && (s_logoTexture->Status == ImTextureStatus_OK))
+	{
+		const ImVec2 logoMin(floorf(centreX - width * 0.5f), floorf(top));
+		panel.draw->AddImage(ImTextureRef(s_logoTexture->GetTexID()), logoMin, ImVec2(logoMin.x + width, logoMin.y + height));
+	}
+	else
+	{
+		Text(panel, u * 2.4f, ImVec2(centreX, top + (height - u * 2.4f) * 0.5f), kYellow, NATIVE_PRODUCT_NAME, 0.5f);
+	}
 	Text(panel, u, ImVec2(centreX, centreY), kMutedText, (state.levelName[0] != '\0') ? state.levelName : "Second screen", 0.5f);
 	Text(panel, u * 0.8f, ImVec2(centreX, centreY + u * 1.6f), kMutedText, "The map and race info show here during a race.", 0.5f);
 }
@@ -607,26 +627,54 @@ void DrawPanel(ImVec2 pos, ImVec2 size, bool interactive, int identifyNumber, fl
 	}
 }
 
-void DestroyMapTexture()
+void DestroyTexture(ImTextureData *&texture)
 {
-	if (s_mapTexture == nullptr)
+	if (texture == nullptr)
 	{
 		return;
 	}
-	if (s_mapTexture->Status == ImTextureStatus_OK)
+	if (texture->Status == ImTextureStatus_OK)
 	{
-		s_mapTexture->SetStatus(ImTextureStatus_WantDestroy);
-		s_mapTexture->UnusedFrames = 1;
-		ImGui_ImplOpenGL3_UpdateTexture(s_mapTexture);
+		texture->SetStatus(ImTextureStatus_WantDestroy);
+		texture->UnusedFrames = 1;
+		ImGui_ImplOpenGL3_UpdateTexture(texture);
 	}
-	IM_DELETE(s_mapTexture);
-	s_mapTexture = nullptr;
+	IM_DELETE(texture);
+	texture = nullptr;
+}
+
+void UpdateLogoTexture()
+{
+	if ((s_logoWantHeight <= 0) || ((s_logoTexture != nullptr) && (s_logoTexture->Height == s_logoWantHeight)))
+	{
+		return;
+	}
+	DestroyTexture(s_logoTexture);
+
+	int sourceWidth = 0;
+	int sourceHeight = 0;
+	NativeBranding_GetLogo(&sourceWidth, &sourceHeight);
+	const int height = s_logoWantHeight;
+	const int width = SDL_max((sourceWidth * height + sourceHeight / 2) / sourceHeight, 1);
+	s_logoTexture = IM_NEW(ImTextureData)();
+	s_logoTexture->Create(ImTextureFormat_RGBA32, width, height);
+	s_logoTexture->UseColors = true;
+	NativeBranding_ResampleLogo((unsigned char *)s_logoTexture->GetPixels(), width, height);
+	s_logoTexture->SetStatus(ImTextureStatus_WantCreate);
+	ImGui_ImplOpenGL3_UpdateTexture(s_logoTexture);
+}
+
+void DestroyMapTexture()
+{
+	DestroyTexture(s_mapTexture);
 }
 
 } // namespace
 
 void NativeSecondScreenUI_UpdateTextures()
 {
+	UpdateLogoTexture();
+
 	int width = 0;
 	int height = 0;
 	int version = 0;
@@ -667,6 +715,7 @@ void NativeSecondScreenUI_UpdateTextures()
 void NativeSecondScreenUI_DestroyTextures()
 {
 	DestroyMapTexture();
+	DestroyTexture(s_logoTexture);
 	s_mapVersion = -1;
 }
 

@@ -134,7 +134,7 @@ void NativeSecondScreenUI_Shutdown(void);
 #ifdef __cplusplus
 }
 
-// Main ImGui context, between frames: uploads the map texture when it changed.
+// Main ImGui context, between frames: uploads the map and logo textures when they changed.
 void NativeSecondScreenUI_UpdateTextures();
 // Main ImGui context, before its renderer shuts down.
 void NativeSecondScreenUI_DestroyTextures();

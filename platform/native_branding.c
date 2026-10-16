@@ -43,6 +43,43 @@ const unsigned char *NativeBranding_GetLogo(int *width, int *height)
 	return s_brandingLogo;
 }
 
+void NativeBranding_ResampleLogo(unsigned char *out, int width, int height)
+{
+	int sourceWidth = 0;
+	int sourceHeight = 0;
+	const unsigned char *source = NativeBranding_GetLogo(&sourceWidth, &sourceHeight);
+
+	for (int y = 0; y < height; y++)
+	{
+		const int y0 = y * sourceHeight / height;
+		const int y1 = SDL_max((y + 1) * sourceHeight / height, y0 + 1);
+		for (int x = 0; x < width; x++, out += 4)
+		{
+			const int x0 = x * sourceWidth / width;
+			const int x1 = SDL_max((x + 1) * sourceWidth / width, x0 + 1);
+			// Average with premultiplied alpha, so transparent pixels don't darken the edges.
+			unsigned int sum[4] = {0, 0, 0, 0};
+			for (int sy = y0; sy < y1; sy++)
+			{
+				for (int sx = x0; sx < x1; sx++)
+				{
+					const unsigned char *in = &source[(sy * sourceWidth + sx) * 4];
+					sum[0] += in[0] * in[3];
+					sum[1] += in[1] * in[3];
+					sum[2] += in[2] * in[3];
+					sum[3] += in[3];
+				}
+			}
+			const unsigned int count = (unsigned int)((y1 - y0) * (x1 - x0));
+			for (int c = 0; c < 3; c++)
+			{
+				out[c] = (unsigned char)((sum[3] != 0) ? (sum[c] + sum[3] / 2) / sum[3] : 0);
+			}
+			out[3] = (unsigned char)((sum[3] + count / 2) / count);
+		}
+	}
+}
+
 void NativeBranding_SetWindowIcon(SDL_Window *window)
 {
 	static unsigned char pixels[NATIVE_BRANDING_ICON_SIZE * NATIVE_BRANDING_ICON_SIZE * 4];

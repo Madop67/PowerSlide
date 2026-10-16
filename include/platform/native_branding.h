@@ -12,6 +12,9 @@ extern "C" {
 
 // The menu logo as straight-alpha RGBA bytes, decoded on first use. Never NULL.
 const unsigned char *NativeBranding_GetLogo(int *width, int *height);
+// The logo box-filtered down to width x height (straight-alpha RGBA into out), so it
+// stays smooth when drawn smaller: the GL backend samples bilinearly, without mipmaps.
+void NativeBranding_ResampleLogo(unsigned char *out, int width, int height);
 // Sets the window and taskbar icon.
 void NativeBranding_SetWindowIcon(SDL_Window *window);
 

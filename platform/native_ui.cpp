@@ -231,13 +231,13 @@ void DestroyLogoTexture()
 	s_logoTexture = nullptr;
 }
 
-// Box-filters the logo down to the height it is drawn at, so it stays smooth at every
-// menu size (the GL backend samples bilinearly, without mipmaps). Runs between frames.
+// Resamples the logo to the height it is drawn at, so it stays smooth at every menu
+// size. Runs between frames.
 void UpdateLogoTexture()
 {
 	int sourceWidth = 0;
 	int sourceHeight = 0;
-	const unsigned char *source = NativeBranding_GetLogo(&sourceWidth, &sourceHeight);
+	NativeBranding_GetLogo(&sourceWidth, &sourceHeight);
 	const int height = SDL_clamp((int)(kBaseFontSize * s_styleScale * kLogoFontScale + 0.5f), 1, sourceHeight);
 	if ((s_logoTexture != nullptr) && (s_logoTexture->Height == height))
 	{
@@ -250,36 +250,7 @@ void UpdateLogoTexture()
 	s_logoTexture->Create(ImTextureFormat_RGBA32, width, height);
 	s_logoTexture->UseColors = true;
 
-	unsigned char *out = (unsigned char *)s_logoTexture->GetPixels();
-	for (int y = 0; y < height; y++)
-	{
-		const int y0 = y * sourceHeight / height;
-		const int y1 = SDL_max((y + 1) * sourceHeight / height, y0 + 1);
-		for (int x = 0; x < width; x++, out += 4)
-		{
-			const int x0 = x * sourceWidth / width;
-			const int x1 = SDL_max((x + 1) * sourceWidth / width, x0 + 1);
-			// Average with premultiplied alpha, so transparent pixels don't darken the edges.
-			unsigned int sum[4] = {0, 0, 0, 0};
-			for (int sy = y0; sy < y1; sy++)
-			{
-				for (int sx = x0; sx < x1; sx++)
-				{
-					const unsigned char *in = &source[(sy * sourceWidth + sx) * 4];
-					sum[0] += in[0] * in[3];
-					sum[1] += in[1] * in[3];
-					sum[2] += in[2] * in[3];
-					sum[3] += in[3];
-				}
-			}
-			const unsigned int count = (unsigned int)((y1 - y0) * (x1 - x0));
-			for (int c = 0; c < 3; c++)
-			{
-				out[c] = (unsigned char)((sum[3] != 0) ? (sum[c] + sum[3] / 2) / sum[3] : 0);
-			}
-			out[3] = (unsigned char)((sum[3] + count / 2) / count);
-		}
-	}
+	NativeBranding_ResampleLogo((unsigned char *)s_logoTexture->GetPixels(), width, height);
 
 	s_logoTexture->SetStatus(ImTextureStatus_WantCreate);
 	ImGui_ImplOpenGL3_UpdateTexture(s_logoTexture);
