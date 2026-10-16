@@ -17,6 +17,7 @@
 #include "platform/native_settings.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -254,6 +255,9 @@ void DrawEnvOffset(float *ofsX, float *ofsY)
 
 #define NATIVE_WIDE_OT_BUFFERS    2
 #define NATIVE_WIDE_ANCHOR_RANGES 8
+#define NATIVE_WIDE_ANCHOR_GROUPS 32
+// Group whose centre has not been measured yet.
+#define NATIVE_WIDE_GROUP_UNMEASURED INT_MIN
 
 struct NativeWideFrame
 {
@@ -268,6 +272,12 @@ struct NativeWideFrame
 	// Full-frame range (see NativeGpu_AddFullFrameRange) instead of race HUD.
 	b32 anchorFullFrame[NATIVE_WIDE_ANCHOR_RANGES];
 	s32 anchorCount;
+	// HUD models (NativeGpu_AddHudAnchorGroup), each placed by its centre X (raw
+	// packet coordinates, measured when the walk first reaches it).
+	const u8 *groupStart[NATIVE_WIDE_ANCHOR_GROUPS];
+	const u8 *groupEnd[NATIVE_WIDE_ANCHOR_GROUPS];
+	s32 groupMidX[NATIVE_WIDE_ANCHOR_GROUPS];
+	s32 groupCount;
 };
 
 global_variable struct NativeWideFrame s_wide;
@@ -277,6 +287,8 @@ global_variable b32 s_inHudOT;
 global_variable b32 s_primAnchored;
 // Set while parsing a packet of a full-frame image in a HUD slot, which keeps its full width.
 global_variable b32 s_primFullFrame;
+// Group of the packet being parsed (index into s_wide.group*), or -1.
+global_variable s32 s_primGroup = -1;
 
 void NativeGpu_SetWidescreenFrame(int bufferIndex, const void *otBase, int otBytes, const void *hudFirst, const void *hudEnd, int menuMode,
                                   int anchorRegions)
@@ -292,6 +304,7 @@ void NativeGpu_SetWidescreenFrame(int bufferIndex, const void *otBase, int otByt
 	s_wide.menuMode = menuMode != 0;
 	s_wide.anchorRegions = (anchorRegions == 2) ? 2 : 1;
 	s_wide.anchorCount = 0;
+	s_wide.groupCount = 0;
 }
 
 internal void NativeGpu_AddRange(const void *start, const void *end, b32 fullFrame)
@@ -316,17 +329,122 @@ void NativeGpu_AddFullFrameRange(const void *start, const void *end)
 	NativeGpu_AddRange(start, end, true);
 }
 
+void NativeGpu_AddHudAnchorGroup(const void *start, const void *end)
+{
+	if ((s_wide.groupCount >= NATIVE_WIDE_ANCHOR_GROUPS) || (start == NULL) || (end <= start))
+	{
+		return;
+	}
+	s_wide.groupStart[s_wide.groupCount] = (const u8 *)start;
+	s_wide.groupEnd[s_wide.groupCount] = (const u8 *)end;
+	s_wide.groupMidX[s_wide.groupCount] = NATIVE_WIDE_GROUP_UNMEASURED;
+	s_wide.groupCount++;
+}
+
+// Mark: anchor count in the low 16 bits, group count above.
 int NativeGpu_GetHudAnchorCount(void)
 {
-	return s_wide.anchorCount;
+	return s_wide.anchorCount | (s_wide.groupCount << 16);
 }
 
 void NativeGpu_SetHudAnchorCount(int count)
 {
-	if ((count >= 0) && (count <= s_wide.anchorCount))
+	const int anchors = count & 0xffff;
+	const int groups = (count >> 16) & 0xffff;
+	if (anchors <= s_wide.anchorCount)
 	{
-		s_wide.anchorCount = count;
+		s_wide.anchorCount = anchors;
 	}
+	if (groups <= s_wide.groupCount)
+	{
+		s_wide.groupCount = groups;
+	}
+}
+
+// Widens [*minX, *maxX] by the vertices of the GPU primitives in one packet's words
+// [words, end). Polygons and sprites only (what models and HUD art are made of);
+// stops at anything else.
+internal void NativeGpu_PacketXRange(const u32 *words, const u32 *end, int *minX, int *maxX)
+{
+	while (words < end)
+	{
+		const u32 code = words[0] >> 24;
+		int xs[4];
+		int count = 0;
+		int length;
+
+		if ((code >= 0x20) && (code < 0x40))
+		{
+			const b32 gouraud = (code & 0x10) != 0;
+			const b32 quad = (code & 0x08) != 0;
+			const b32 textured = (code & 0x04) != 0;
+			const int verts = quad ? 4 : 3;
+			const u32 *w = words + 1;
+			for (int v = 0; v < verts; v++)
+			{
+				if (gouraud && (v > 0))
+				{
+					w++;
+				}
+				xs[count++] = (s16)(w[0] & 0xffff);
+				w += textured ? 2 : 1;
+			}
+			length = (int)(w - words);
+		}
+		else if ((code >= 0x60) && (code < 0x80))
+		{
+			const b32 textured = (code & 0x04) != 0;
+			const u32 size = code & 0x18;
+			const u32 *w = words + 2 + (textured ? 1 : 0);
+			int width = (size == 0x08) ? 1 : (size == 0x10) ? 8 : 16;
+			if (size == 0)
+			{
+				width = (s16)(w[0] & 0xffff);
+				w++;
+			}
+			xs[count++] = (s16)(words[1] & 0xffff);
+			xs[count++] = xs[0] + width;
+			length = (int)(w - words);
+		}
+		else
+		{
+			return;
+		}
+
+		for (int i = 0; i < count; i++)
+		{
+			*minX = SDL_min(*minX, xs[i]);
+			*maxX = SDL_max(*maxX, xs[i]);
+		}
+		words += length;
+	}
+}
+
+// Centre X of a group's primitives, from the packets written in its memory.
+internal s32 NativeGpu_MeasureGroup(int group)
+{
+	const u8 *packet = s_wide.groupStart[group];
+	const u8 *end = s_wide.groupEnd[group];
+	int minX = INT_MAX;
+	int maxX = INT_MIN;
+
+	while (packet + sizeof(u32) <= end)
+	{
+		const int length = getlen(packet);
+		const u8 *next = packet + (length + P_LEN) * sizeof(u32);
+		if ((length <= 0) || (length > 32) || (next > end))
+		{
+			break;
+		}
+		NativeGpu_PacketXRange((const u32 *)packet + P_LEN, (const u32 *)next, &minX, &maxX);
+		packet = next;
+	}
+
+	if (minX > maxX)
+	{
+		return NATIVE_WIDE_GROUP_UNMEASURED;
+	}
+	return (minX + maxX) / 2;
 }
 
 // Called for every zero-length packet in the walk: OT slots are the only
@@ -353,12 +471,34 @@ internal void NativeGpu_ClassifyPacket(const u8 *packet, b32 *anchored, b32 *ful
 {
 	*anchored = false;
 	*fullFrame = false;
+	s_primGroup = -1;
 	for (int i = 0; i < s_wide.anchorCount; i++)
 	{
 		if ((packet >= s_wide.anchorStart[i]) && (packet < s_wide.anchorEnd[i]))
 		{
 			*fullFrame = s_wide.anchorFullFrame[i];
 			*anchored = !s_wide.anchorFullFrame[i];
+			break;
+		}
+	}
+
+	if (!*anchored)
+	{
+		return;
+	}
+
+	for (int i = 0; i < s_wide.groupCount; i++)
+	{
+		if ((packet >= s_wide.groupStart[i]) && (packet < s_wide.groupEnd[i]))
+		{
+			if (s_wide.groupMidX[i] == NATIVE_WIDE_GROUP_UNMEASURED)
+			{
+				s_wide.groupMidX[i] = NativeGpu_MeasureGroup(i);
+			}
+			if (s_wide.groupMidX[i] != NATIVE_WIDE_GROUP_UNMEASURED)
+			{
+				s_primGroup = i;
+			}
 			return;
 		}
 	}
@@ -409,7 +549,14 @@ internal b32 NativeGpu_WideLayout(int minX, int maxX, int *centerX, int *shift)
 	{
 		// Left and right thirds of the screen (or of each split-screen half) move out by
 		// half the width the squeeze took away (1/8 at 16:9); the middle stays centred.
-		const int mid = (minX + maxX) / 2;
+		// A HUD model moves as a whole, by its centre.
+		int mid = (minX + maxX) / 2;
+		if (s_primGroup >= 0)
+		{
+			float ofsX, ofsY;
+			DrawEnvOffset(&ofsX, &ofsY);
+			mid = s_wide.groupMidX[s_primGroup] + (int)ofsX;
+		}
 		const int regionW = (s_wide.anchorRegions == 2) ? width / 2 : width;
 		const int regionX = ((s_wide.anchorRegions == 2) && (mid >= width / 2)) ? width / 2 : 0;
 		const int rel = mid - regionX;
@@ -424,6 +571,23 @@ internal b32 NativeGpu_WideLayout(int minX, int maxX, int *centerX, int *shift)
 		else if (rel * 10 > regionW * 6)
 		{
 			*shift = edgeShift;
+		}
+	}
+
+	// A centred primitive sliding off a 4:3 edge (results, menus) would stop short of
+	// the wide screen's edge once squeezed. Push it out by how far it has left the 4:3
+	// frame, so it is off screen exactly when it is off the 4:3 frame.
+	if ((*shift == 0) && (maxX > minX))
+	{
+		const int span = maxX - minX;
+		const int edgeOffset = (width * (1000 - NativeSettings_WideSqueeze1000())) / 2000;
+		if (minX < 0)
+		{
+			*shift = -(edgeOffset * SDL_min(-minX, span)) / span;
+		}
+		else if (maxX > width)
+		{
+			*shift = (edgeOffset * SDL_min(maxX - width, span)) / span;
 		}
 	}
 	return true;
@@ -1357,6 +1521,7 @@ void ParsePrimitivesLinkedList(u32 *p, int singlePrimitive)
 	s_gpu.drawPrimMode = singlePrimitive;
 	s_inHudOT = false;
 	s_primAnchored = false;
+	s_primGroup = -1;
 	s_primFullFrame = false;
 
 	if (singlePrimitive)
@@ -1394,6 +1559,7 @@ void ParsePrimitivesLinkedList(u32 *p, int singlePrimitive)
 				u8 *currentPacket = basePacket;
 				u8 *endPacket = basePacket + (tagLength + P_LEN) * sizeof(u32);
 				s_primAnchored = false;
+				s_primGroup = -1;
 				s_primFullFrame = false;
 				if (s_inHudOT)
 				{

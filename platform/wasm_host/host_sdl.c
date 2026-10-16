@@ -13,9 +13,15 @@
 
 #if defined(__ANDROID__)
 #include "host_gl.h"
+#include "host_presentation_android.h"
 #endif
 
 #define H2P(type, handle) ((type *)HostHandle_ToPtr(handle))
+
+#if defined(__ANDROID__)
+// NOTE: The second display's stand-in window (host_presentation_android.h).
+#define HOST_SDL_IS_PRESENTATION(handle) HostPresentation_IsWindow(HostHandle_ToPtr(handle))
+#endif
 
 _Static_assert(sizeof(SDL_AudioSpec) == 12, "SDL_AudioSpec must match the wasm32 layout");
 _Static_assert(sizeof(SDL_Event) == 128, "SDL_Event must match the wasm32 layout");
@@ -350,6 +356,15 @@ u32 w2c_env_SDL_CreateWindow(struct w2c_env *env, u32 title, u32 w, u32 h, u64 f
 {
 	(void)env;
 #if defined(__ANDROID__)
+	// NOTE: SDL has one window on Android; the guest's second one goes on the
+	// second display (the Dual Screen tab).
+	int windowCount = 0;
+	SDL_free(SDL_GetWindows(&windowCount));
+	if (windowCount > 0)
+	{
+		return HostHandle_FromPtr(HostPresentation_CreateWindow());
+	}
+
 	// NOTE: A phone has one screen; fullscreen also hides the system bars.
 	flags |= SDL_WINDOW_FULLSCREEN;
 #endif
@@ -359,6 +374,14 @@ u32 w2c_env_SDL_CreateWindow(struct w2c_env *env, u32 title, u32 w, u32 h, u64 f
 void w2c_env_SDL_DestroyWindow(struct w2c_env *env, u32 window)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		HostPresentation_DestroyWindow();
+		HostHandle_Release(window);
+		return;
+	}
+#endif
 	SDL_DestroyWindow(H2P(SDL_Window, window));
 	HostHandle_Release(window);
 }
@@ -366,6 +389,12 @@ void w2c_env_SDL_DestroyWindow(struct w2c_env *env, u32 window)
 u64 w2c_env_SDL_GetWindowFlags(struct w2c_env *env, u32 window)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS | SDL_WINDOW_NOT_FOCUSABLE;
+	}
+#endif
 	return SDL_GetWindowFlags(H2P(SDL_Window, window));
 }
 
@@ -374,7 +403,19 @@ u32 w2c_env_SDL_GetWindowSize(struct w2c_env *env, u32 window, u32 outW, u32 out
 	(void)env;
 	int w = 0;
 	int h = 0;
+#if defined(__ANDROID__)
+	bool ok = true;
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		HostPresentation_GetSize(&w, &h);
+	}
+	else
+	{
+		ok = SDL_GetWindowSize(H2P(SDL_Window, window), &w, &h);
+	}
+#else
 	bool ok = SDL_GetWindowSize(H2P(SDL_Window, window), &w, &h);
+#endif
 
 	if (outW != 0)
 	{
@@ -410,6 +451,10 @@ u32 w2c_env_SDL_SetWindowFullscreen(struct w2c_env *env, u32 window, u32 fullscr
 #if defined(__ANDROID__)
 	// NOTE: Android has no windowed mode; "Windowed" would only show the system bars.
 	(void)fullscreen;
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return true;
+	}
 	return SDL_SetWindowFullscreen(H2P(SDL_Window, window), true);
 #else
 	return SDL_SetWindowFullscreen(H2P(SDL_Window, window), fullscreen != 0);
@@ -464,6 +509,11 @@ u32 w2c_env_SDL_GL_CreateContext(struct w2c_env *env, u32 window)
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return HostHandle_FromPtr(HostPresentation_CreateContext());
+	}
+
 	SDL_GLContext context = SDL_GL_CreateContext(H2P(SDL_Window, window));
 	if (context != NULL)
 	{
@@ -484,36 +534,72 @@ u32 w2c_env_SDL_GL_ExtensionSupported(struct w2c_env *env, u32 extension)
 u32 w2c_env_SDL_GL_SetSwapInterval(struct w2c_env *env, u32 interval)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HostPresentation_IsCurrent())
+	{
+		return HostPresentation_SetSwapInterval((int)interval);
+	}
+#endif
 	return SDL_GL_SetSwapInterval((int)interval);
 }
 
 u32 w2c_env_SDL_GL_SwapWindow(struct w2c_env *env, u32 window)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return HostPresentation_Swap();
+	}
+#endif
 	return SDL_GL_SwapWindow(H2P(SDL_Window, window));
 }
 
 u32 w2c_env_SDL_SetWindowSize(struct w2c_env *env, u32 window, u32 w, u32 h)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return true;
+	}
+#endif
 	return SDL_SetWindowSize(H2P(SDL_Window, window), (int)w, (int)h);
 }
 
 u32 w2c_env_SDL_SetWindowPosition(struct w2c_env *env, u32 window, u32 x, u32 y)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return true;
+	}
+#endif
 	return SDL_SetWindowPosition(H2P(SDL_Window, window), (int)x, (int)y);
 }
 
 u32 w2c_env_SDL_SyncWindow(struct w2c_env *env, u32 window)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return true;
+	}
+#endif
 	return SDL_SyncWindow(H2P(SDL_Window, window));
 }
 
 u32 w2c_env_SDL_GL_GetCurrentContext(struct w2c_env *env)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HostPresentation_IsCurrent())
+	{
+		return HostHandle_FromPtr(HostPresentation_Context());
+	}
+#endif
 	return HostHandle_FromPtr(SDL_GL_GetCurrentContext());
 }
 
@@ -535,6 +621,13 @@ u32 w2c_env_SDL_GetWindowPosition(struct w2c_env *env, u32 window, u32 outX, u32
 	(void)env;
 	int x = 0;
 	int y = 0;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		HostSDL_WriteInt2(outX, outY, 0, 0);
+		return true;
+	}
+#endif
 	bool ok = SDL_GetWindowPosition(H2P(SDL_Window, window), &x, &y);
 
 	HostSDL_WriteInt2(outX, outY, x, y);
@@ -546,6 +639,14 @@ u32 w2c_env_SDL_GetWindowSizeInPixels(struct w2c_env *env, u32 window, u32 outW,
 	(void)env;
 	int w = 0;
 	int h = 0;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		HostPresentation_GetSize(&w, &h);
+		HostSDL_WriteInt2(outW, outH, w, h);
+		return true;
+	}
+#endif
 	bool ok = SDL_GetWindowSizeInPixels(H2P(SDL_Window, window), &w, &h);
 
 	HostSDL_WriteInt2(outW, outH, w, h);
@@ -555,12 +656,24 @@ u32 w2c_env_SDL_GetWindowSizeInPixels(struct w2c_env *env, u32 window, u32 outW,
 f32 w2c_env_SDL_GetWindowDisplayScale(struct w2c_env *env, u32 window)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return 1.0f;
+	}
+#endif
 	return SDL_GetWindowDisplayScale(H2P(SDL_Window, window));
 }
 
 u32 w2c_env_SDL_GetDisplayForWindow(struct w2c_env *env, u32 window)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return HOST_PRESENTATION_DISPLAY_ID;
+	}
+#endif
 	return SDL_GetDisplayForWindow(H2P(SDL_Window, window));
 }
 
@@ -600,6 +713,20 @@ u32 w2c_env_SDL_GetDisplays(struct w2c_env *env, u32 outCount)
 	int count = 0;
 	SDL_DisplayID *ids = SDL_GetDisplays(&count);
 
+#if defined(__ANDROID__)
+	// NOTE: SDL only knows the game's display; add the second one after it.
+	if ((ids != NULL) && HostPresentation_HasDisplay())
+	{
+		SDL_DisplayID *more = (SDL_DisplayID *)SDL_realloc(ids, (size_t)(count + 2) * sizeof(SDL_DisplayID));
+		if (more != NULL)
+		{
+			ids = more;
+			ids[count++] = HOST_PRESENTATION_DISPLAY_ID;
+			ids[count] = 0;
+		}
+	}
+#endif
+
 	if (outCount != 0)
 	{
 		memcpy(HOST_G2H_SIZED(outCount, 4), &count, 4);
@@ -621,6 +748,12 @@ u32 w2c_env_SDL_GetDisplays(struct w2c_env *env, u32 outCount)
 
 u32 w2c_env_SDL_GetDisplayName(struct w2c_env *env, u32 displayID)
 {
+#if defined(__ANDROID__)
+	if ((SDL_DisplayID)displayID == HOST_PRESENTATION_DISPLAY_ID)
+	{
+		return HostMem_StringToGuest(env, HostPresentation_DisplayName());
+	}
+#endif
 	return HostMem_StringToGuest(env, SDL_GetDisplayName((SDL_DisplayID)displayID));
 }
 
@@ -630,7 +763,12 @@ u32 w2c_env_SDL_GetDisplayBounds(struct w2c_env *env, u32 displayID, u32 outRect
 {
 	(void)env;
 	SDL_Rect rect = {0, 0, 0, 0};
+#if defined(__ANDROID__)
+	bool ok = ((SDL_DisplayID)displayID == HOST_PRESENTATION_DISPLAY_ID) ? HostPresentation_DisplayBounds(&rect)
+	                                                                      : SDL_GetDisplayBounds((SDL_DisplayID)displayID, &rect);
+#else
 	bool ok = SDL_GetDisplayBounds((SDL_DisplayID)displayID, &rect);
+#endif
 
 	if (outRect != 0)
 	{
@@ -642,12 +780,27 @@ u32 w2c_env_SDL_GetDisplayBounds(struct w2c_env *env, u32 displayID, u32 outRect
 u32 w2c_env_SDL_GL_MakeCurrent(struct w2c_env *env, u32 window, u32 context)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window) && HostPresentation_IsContext(HostHandle_ToPtr(context)))
+	{
+		return HostPresentation_MakeCurrent();
+	}
+	HostPresentation_LostCurrent();
+#endif
 	return SDL_GL_MakeCurrent(H2P(SDL_Window, window), (SDL_GLContext)HostHandle_ToPtr(context));
 }
 
 u32 w2c_env_SDL_GL_DestroyContext(struct w2c_env *env, u32 context)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HostPresentation_IsContext(HostHandle_ToPtr(context)))
+	{
+		bool ok = HostPresentation_DestroyContext();
+		HostHandle_Release(context);
+		return ok;
+	}
+#endif
 	bool ok = SDL_GL_DestroyContext((SDL_GLContext)HostHandle_ToPtr(context));
 	HostHandle_Release(context);
 	return ok;
@@ -656,6 +809,12 @@ u32 w2c_env_SDL_GL_DestroyContext(struct w2c_env *env, u32 context)
 u32 w2c_env_SDL_GetWindowID(struct w2c_env *env, u32 window)
 {
 	(void)env;
+#if defined(__ANDROID__)
+	if (HOST_SDL_IS_PRESENTATION(window))
+	{
+		return HOST_PRESENTATION_WINDOW_ID;
+	}
+#endif
 	return SDL_GetWindowID(H2P(SDL_Window, window));
 }
 

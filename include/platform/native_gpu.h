@@ -37,8 +37,13 @@ void NativeGpu_AddHudAnchorRange(const void *start, const void *end);
 // Marks primitive memory [start, end) as a full-frame image drawn in a HUD slot
 // (the pause screenshot): it is tiled from the already-wide frame, so it is not squeezed.
 void NativeGpu_AddFullFrameRange(const void *start, const void *end);
+// Marks primitive memory [start, end) as one HUD model. Edge anchoring moves its
+// primitives together, by the model's centre, so a model near a third boundary is
+// not split. Only refines primitives that an anchor range already marks as race HUD.
+void NativeGpu_AddHudAnchorGroup(const void *start, const void *end);
 // Frame interpolation draws a frame between two real ones; it puts the anchor
-// list back afterwards so the real frame's ranges are not crowded out.
+// ranges and groups back afterwards so the real frame's are not crowded out. The
+// value is an opaque mark for NativeGpu_SetHudAnchorCount.
 int NativeGpu_GetHudAnchorCount(void);
 void NativeGpu_SetHudAnchorCount(int count);
 

@@ -1,5 +1,9 @@
 #include <common.h>
 
+#if defined(CTR_NATIVE)
+#include <platform/native_gpu.h>
+#endif
+
 
 struct RenderBucketEntry
 {
@@ -5277,6 +5281,18 @@ void RenderBucket_Execute(void *param_1, struct PrimMem *param_2)
 		{
 			continue;
 		}
+
+#if defined(CTR_NATIVE)
+		// Widescreen edge anchoring places each HUD model (Wumpa, big rank number) as a
+		// whole; its primitives are the ones this draw writes.
+		if (ctx.pb == &sdata->gGT->pushBuffer_UI)
+		{
+			void *modelStart = param_2->cursor;
+			RenderBucket_DispatchDrawFunc(&ctx);
+			NativeGpu_AddHudAnchorGroup(modelStart, param_2->cursor);
+			continue;
+		}
+#endif
 
 		RenderBucket_DispatchDrawFunc(&ctx);
 	}
