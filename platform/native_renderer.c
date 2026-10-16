@@ -1795,12 +1795,16 @@ void NativeRenderer_Clear(int x, int y, int w, int h, u8 r, u8 g, u8 b)
 		return;
 	}
 
+	// The main render target is at the internal resolution: scale the PS1 rect to it
+	// (rounding outwards), or above 1x only part of the frame is cleared.
 	const int relX = overlapX - displayX;
+	const int relRight = overlapRight - displayX;
 	const int relBottom = overlapBottom - displayY;
-	const int scissorX = relX;
-	const int scissorY = displayH - relBottom;
-	const int scissorW = overlapRight - overlapX;
-	const int scissorH = overlapBottom - overlapY;
+	const int relTop = overlapY - displayY;
+	const int scissorX = (int)SDL_floorf((f32)relX * s_renderScaleX);
+	const int scissorY = (int)SDL_floorf((f32)(displayH - relBottom) * s_renderScaleY);
+	const int scissorW = -(int)SDL_floorf(-(f32)relRight * s_renderScaleX) - scissorX;
+	const int scissorH = -(int)SDL_floorf(-(f32)(displayH - relTop) * s_renderScaleY) - scissorY;
 
 	if ((scissorW <= 0) || (scissorH <= 0))
 	{
