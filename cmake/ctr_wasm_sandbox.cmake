@@ -195,6 +195,8 @@ endif()
 if(ANDROID)
     # SDLActivity loads libmain.so and calls SDL_main; SDL is linked in
     # statically (PowerSlideActivity.getLibraries() lists only "main").
+    # host_presentation_android.c backs the second display (PresentationBridge.java).
+    list(APPEND CTR_HOST_SOURCES platform/wasm_host/host_presentation_android.c)
     add_library(ctr_native SHARED ${CTR_HOST_SOURCES})
     set_target_properties(ctr_native PROPERTIES OUTPUT_NAME main)
 else()

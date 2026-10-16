@@ -1885,10 +1885,6 @@ void DrawDualScreenTab()
 		{
 			ImGui::TextDisabled("Showing on display %d.", current);
 		}
-		else if (kTouchUi)
-		{
-			ImGui::TextDisabled("Second displays are not supported on this device yet. Inset works.");
-		}
 		else if (displays < 2)
 		{
 			ImGui::TextDisabled("No second display found. The screen opens when one is connected.");
