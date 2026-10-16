@@ -89,6 +89,12 @@ void *NativeBigField_Alloc(int size)
 	return mem;
 }
 
+void NativeBigField_GetArena(void **ptr, u32 *size)
+{
+	*ptr = s_bigFieldArena;
+	*size = NATIVE_BIG_FIELD_ON() ? (u32)s_bigFieldArenaUsed : 0;
+}
+
 // Driver in retail grid slot `slot`, or -1.
 internal int NativeBigField_DriverInSlot(int slot)
 {
