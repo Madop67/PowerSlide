@@ -45,3 +45,6 @@ __pycache__/
 # Per-user settings written by the game
 ctr-native.toml
 ctr-native-presets.toml
+
+# Local logs and screen recordings for bug reports
+logs/
