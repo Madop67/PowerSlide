@@ -8,7 +8,7 @@ endif()
 project(CTR-Native C CXX)
 include(CheckCCompilerFlag)
 
-set(CTR_NATIVE_VERSION "1.0.0")
+set(CTR_NATIVE_VERSION "1.1.0")
 
 # NOTE: macOS cannot run 32-bit executables, so it builds the game as a wasm32
 # (ILP32) sandbox translated to native C. See cmake/ctr_wasm_sandbox.cmake.
