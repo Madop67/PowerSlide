@@ -106,6 +106,10 @@ void NativeBigField_Latch(struct GameTracker *gGT);
 // host arena outside the mempack (reset by every latch). NULL when it runs out.
 void *NativeBigField_Alloc(int size);
 
+// The arena's used part (pools, drivers, prim memory): game state that snapshots
+// such as frame interpolation must save with the mempack. Size 0 when unused.
+void NativeBigField_GetArena(void **ptr, u32 *size);
+
 // End of BOTS_Adv_AdjustDifficulty: picks characters for bots 8..23 and fills slots
 // 8..23 of the spawn, path and accelerate orders from the ones retail computed for 0..7.
 void NativeBigField_AfterAdjustDifficulty(struct GameTracker *gGT);

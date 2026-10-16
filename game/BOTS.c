@@ -3528,7 +3528,11 @@ u32 BOTS_ChangeState(struct Driver *driverVictim, int damageType, struct Driver 
 				driverVictim->turbo_outsideTimer = 0;
 				driverVictim->botData.aiPhysics.reserved_0x5cc = 0;
 
+#if defined(CTR_NATIVE)
+				if (GAME_DRIVER_CHARACTER_ID(driverVictim->driverID) == NITROS_OXIDE)
+#else
 				if (characters[driverVictim->driverID] == NITROS_OXIDE)
+#endif
 				{
 					newSpeed = CTR_MipsSra(driverVictim->botData.aiPhysics.speedLinear, 1);
 				}

@@ -129,6 +129,19 @@ internal int NativeInterp_GetRegions(struct NativeInterpRegion *regions)
 	NATIVE_INTERP_REGION(CTR_SCRATCHPAD_BASE, CTR_SCRATCHPAD_SIZE);
 	NATIVE_INTERP_REGION(&gteRegs, sizeof(gteRegs));
 
+	// A big-field race keeps its pools (drivers, threads, instances) and prim memory
+	// outside the mempack, in the big field's arena.
+	{
+		void *arena;
+		u32 arenaSize;
+		NativeBigField_GetArena(&arena, &arenaSize);
+		NATIVE_INTERP_REGION(&g_nativeBigField, sizeof(g_nativeBigField));
+		if (arenaSize != 0)
+		{
+			NATIVE_INTERP_REGION(arena, arenaSize);
+		}
+	}
+
 #undef NATIVE_INTERP_REGION
 
 	return count;
@@ -141,19 +154,21 @@ internal b32 NativeInterp_SaveSnapshot(void)
 	struct NativeInterpRegion regions[NATIVE_INTERP_MAX_REGIONS];
 	const int count = NativeInterp_GetRegions(regions);
 
-	if (s_interpSnapshot == NULL)
+	// The big field's arena use changes per level, so the total can grow.
+	u32 total = 0;
+	for (int i = 0; i < count; i++)
 	{
-		u32 total = 0;
-		for (int i = 0; i < count; i++)
-		{
-			total += regions[i].size;
-		}
+		total += regions[i].size;
+	}
 
-		s_interpSnapshot = (u8 *)malloc(total);
-		if (s_interpSnapshot == NULL)
+	if (total > s_interpSnapshotSize)
+	{
+		u8 *snapshot = (u8 *)realloc(s_interpSnapshot, total);
+		if (snapshot == NULL)
 		{
 			return false;
 		}
+		s_interpSnapshot = snapshot;
 		s_interpSnapshotSize = total;
 	}
 
