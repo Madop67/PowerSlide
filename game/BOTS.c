@@ -18,6 +18,15 @@
 #define BOTS_ADV_RNG      (sdata->advRng)
 #endif
 
+#if defined(CTR_NATIVE)
+// Big-field races keep the spawn and accel order of drivers 8..23 outside these tables.
+#define BOTS_KART_ORDER_OF(i)  GAME_KART_SPAWN(i)
+#define BOTS_ACCEL_ORDER_OF(i) GAME_RANK8(GAME_ACCEL_ORDER(i))
+#else
+#define BOTS_KART_ORDER_OF(i)  (BOTS_KART_ORDER[i])
+#define BOTS_ACCEL_ORDER_OF(i) (BOTS_ACCEL_ORDER[i])
+#endif
+
 #ifndef BOTS_ROBOT_DEBUG_NAME
 // NOTE(aalhendi): Native omits debug names; retail supplies the resident robot string.
 #define BOTS_ROBOT_DEBUG_NAME NULL
@@ -3797,7 +3806,7 @@ void BOTS_GotoStartingLine(struct Driver *d)
 	sdata->aiCollisionDelayFrameCount = 0;
 	CTR_PSX_OBSERVE_MEMORY(sdata->aiCollisionDelayFrameCount);
 	VehBirth_TeleportSelf(d, teleportKind, 0);
-	spawnPos = (u8)GAME_KART_SPAWN(d->driverID);
+	spawnPos = (u8)BOTS_KART_ORDER_OF(d->driverID);
 	posZ = d->posCurr.z;
 	posX = d->posCurr.x;
 	posY = d->posCurr.y;
@@ -3822,7 +3831,7 @@ void BOTS_GotoStartingLine(struct Driver *d)
 	d->botData.navProgressRemainder = 0;
 	d->botData.botNavFrame = navFrame;
 	BOTS_SetRotation(rotationDriver, 1);
-	accel = GAME_RANK8(GAME_ACCEL_ORDER(spawnPos));
+	accel = BOTS_ACCEL_ORDER_OF(spawnPos);
 	accelDuration = sdata->AI_AccelFrameCount;
 	d->rotCurr.z = 0;
 	d->rotPrev.z = 0;

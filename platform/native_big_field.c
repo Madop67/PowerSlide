@@ -264,3 +264,106 @@ void VehGroundShadow_Main(void)
 
 	s_groundShadowDriverBase = 0;
 }
+
+// Cup ranks for up to 24 drivers. Retail's versions (game/UI/UI_CupRanks.c, PS1 only)
+// keep an 8-bit mask of ranked drivers and read gGT->cup.points directly; these read
+// cup points and positions through the GAME_* accessors.
+void UI_CupStandings_FinalizeCupRanks(void)
+{
+	struct GameTracker *gGT;
+	int numDrivers;
+	int tiedTopCount;
+	int topScore;
+	int bestRank;
+	int selectedRankSlot;
+
+	bestRank = 99;
+	gGT = sdata->gGT;
+	selectedRankSlot = -1;
+
+	numDrivers = gGT->numPlyrCurrGame + gGT->numBotsNextGame;
+	if (numDrivers >= 5)
+	{
+		numDrivers = 4;
+	}
+
+	tiedTopCount = 0;
+	if (1 < numDrivers)
+	{
+		topScore = GAME_CUP_POINTS(gGT, data.cupPositionPerPlayer[0]);
+
+		for (int i = 1; i < numDrivers; i++)
+		{
+			if (GAME_CUP_POINTS(gGT, data.cupPositionPerPlayer[i]) != topScore)
+			{
+				break;
+			}
+
+			tiedTopCount++;
+		}
+	}
+
+	for (int rankSlot = 0; rankSlot < tiedTopCount + 1; rankSlot++)
+	{
+		for (int i = rankSlot; i < tiedTopCount + 1; i++)
+		{
+			struct Driver *driver;
+			driver = GAME_DRIVER(gGT, data.cupPositionPerPlayer[i]);
+
+			if (driver->driverRank < (s16)bestRank)
+			{
+				bestRank = (u16)driver->driverRank;
+				selectedRankSlot = i;
+			}
+		}
+
+		int previousRankValue = (u16)data.cupPositionPerPlayer[rankSlot];
+		data.cupPositionPerPlayer[rankSlot] = (s16)selectedRankSlot;
+		data.cupPositionPerPlayer[selectedRankSlot] = (s16)previousRankValue;
+
+		bestRank = 99;
+	}
+}
+
+void UI_CupStandings_UpdateCupRanks(void)
+{
+	struct GameTracker *gGT;
+	int bestScore;
+	int bestIndex;
+	int assignedMask;
+	int numDrivers;
+
+	bestScore = 0;
+	bestIndex = -1;
+	gGT = sdata->gGT;
+	assignedMask = 0;
+
+	numDrivers = gGT->numPlyrCurrGame + gGT->numBotsNextGame;
+	if (numDrivers == 0)
+	{
+		return;
+	}
+
+	for (int rankSlot = 0; rankSlot < numDrivers; rankSlot++)
+	{
+		for (int driverIndex = numDrivers - 1; driverIndex >= 0; driverIndex--)
+		{
+			if ((GAME_CUP_POINTS(gGT, driverIndex) >= (s16)bestScore) && (((assignedMask >> driverIndex) & 1) == 0))
+			{
+				bestScore = (u16)GAME_CUP_POINTS(gGT, driverIndex);
+
+				if ((s16)bestIndex != -1)
+				{
+					assignedMask &= ~(1 << bestIndex);
+				}
+
+				bestIndex = driverIndex;
+				assignedMask |= 1 << driverIndex;
+			}
+		}
+
+		GAME_CUP_POSITION(rankSlot) = (s16)bestIndex;
+		bestScore = 0;
+		bestIndex = -1;
+	}
+}

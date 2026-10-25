@@ -247,7 +247,7 @@
 #define GAME_RANK8(rank)                (rank)
 #define GAME_DRIVER(gGT, i)             ((gGT)->drivers[i])
 #define GAME_DRIVER_IN_RACE_ORDER(gGT, i) ((gGT)->driversInRaceOrder[i])
-#define GAME_DRIVER_CHARACTER_ID(i)     (data.characterIDs[i])
+#define GAME_DRIVER_CHARACTER_ID(i)     (GAME_CHARACTER_IDS[i])
 #define GAME_KART_SPAWN(i)              (sdata->kartSpawnOrderArray[i])
 #define GAME_ACCEL_ORDER(i)             (sdata->accelerateOrder[i])
 #define GAME_DRIVER_PATH(i)             (sdata->driver_pathIndexIDs[i])
