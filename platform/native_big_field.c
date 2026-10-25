@@ -250,3 +250,17 @@ const SVec3 *NativeBigField_SpawnRot(struct Level *level, int index)
 	NativeBigField_ExtrapolateSpawn(level, index);
 	return &g_nativeBigField.spawn[index - NATIVE_RETAIL_DRIVERS].rot;
 }
+
+// Ground shadows for a big field: VehGroundShadow_DrawBatch (game/Vehicle/VehGroundShadow.c,
+// same unity build) draws 8 drivers from s_groundShadowDriverBase, the most its scratchpad
+// table holds. Without a big field NATIVE_DRIVER_CAP is 8 and this is one retail pass.
+void VehGroundShadow_Main(void)
+{
+	for (int base = 0; base < NATIVE_DRIVER_CAP; base += VEH_GROUND_SHADOW_MAX_DRIVERS)
+	{
+		s_groundShadowDriverBase = base;
+		VehGroundShadow_DrawBatch();
+	}
+
+	s_groundShadowDriverBase = 0;
+}

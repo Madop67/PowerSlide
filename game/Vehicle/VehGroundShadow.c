@@ -100,7 +100,9 @@ static inline void VehGroundShadow_LoadGteRotMatrix(const MATRIX *m)
 
 #if defined(CTR_NATIVE)
 // The scratchpad holds shadow entries for 8 drivers; a big field draws its 24 in
-// batches of 8, each batch reading the drivers from this base.
+// batches of 8, each batch reading the drivers from this base. The native
+// VehGroundShadow_Main that runs the batches is in platform/native_big_field.c,
+// so game/ keeps one definition of it for the matching tools.
 static int s_groundShadowDriverBase;
 #define VEH_GROUND_SHADOW_DRIVER(tracker, i)                                                                                 \
 	((s_groundShadowDriverBase + (i) < NATIVE_DRIVER_CAP) ? NATIVE_DRIVER((tracker), s_groundShadowDriverBase + (i)) : NULL)
@@ -600,16 +602,3 @@ write_cursor:
 	tracker->backBuffer->primMem.cursor = prim;
 }
 }
-
-#if defined(CTR_NATIVE)
-void VehGroundShadow_Main(void)
-{
-	for (int base = 0; base < NATIVE_DRIVER_CAP; base += VEH_GROUND_SHADOW_MAX_DRIVERS)
-	{
-		s_groundShadowDriverBase = base;
-		VehGroundShadow_DrawBatch();
-	}
-
-	s_groundShadowDriverBase = 0;
-}
-#endif
