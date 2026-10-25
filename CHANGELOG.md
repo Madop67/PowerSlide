@@ -3,6 +3,18 @@
 All notable changes to PowerSlide. Every new feature is off by default, so the
 game plays like the original unless you turn something on.
 
+## 1.1.1 (2026-10-25)
+
+Maintenance release with the latest changes from upstream ctr-native. Nothing
+plays differently.
+
+### Fixed
+
+- Upstream fixes to how a level's background colour is drawn, which now follows
+  the PlayStation's own drawing order.
+- Upstream fix to 3D position math with negative offsets, which could depend on
+  the compiler; every platform now calculates it the same way.
+
 ## 1.1.0 (2026-10-16)
 
 ### New
