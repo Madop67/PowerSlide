@@ -30,6 +30,7 @@
 #include "CDSYS.c"
 
 #include "COLL.c"
+#include "COLL/COLL_InstanceQuery.c"
 
 #include "CTR/CTR_Box.c"
 #include "CTR/CTR_CycleTex.c"
@@ -136,6 +137,10 @@
 #include "MATH/MATH_2_FastSqrt.c"
 #include "MATH/MATH_3_HitboxMatrix.c"
 #include "MATH/MATH_7_MatrixStubs.c"
+// NOTE(aalhendi): Retail compiles this register-entry leaf separately.
+#ifdef CTR_NATIVE
+#include "MATH/MATH_LightMatrix.c"
+#endif
 #include "MATH/MATH_MatrixRotate.c"
 #include "MATH/MATH_6_MatrixMul.c"
 
@@ -159,6 +164,12 @@
 #include "MEMPACK.c"
 
 #include "MixRNG/PSX_BIOS_Rand.c"
+#if !defined(CTR_NATIVE)
+#include "PSX/PSX_BIOS_CallGates.c"
+#include "PSX/PSX_SDK_Leaves.c"
+#include "PSX/PSX_SDK_CDCore.c"
+#include "PSX/PSX_SDK_CDState.c"
+#endif
 #include "MixRNG/RngDeadCoed.c"
 #include "MixRNG/MixRNG.c"
 
@@ -209,6 +220,7 @@
 #include "UI/UI_Rank.c"
 #include "UI/UI_RenderFrame.c"
 #include "UI/UI_VsQuip.c"
+#include "UI/UI_VsWait.c"
 #include "UI/UI_RaceFlow.c"
 #include "UI/UI_CupStandings.c"
 

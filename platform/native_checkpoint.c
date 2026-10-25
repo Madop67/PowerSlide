@@ -16,7 +16,7 @@
 // and retail globals are defined, so they can snapshot the same process-local
 // regions the game mutates.
 #define NATIVE_CHECKPOINT_MAGIC              NATIVE_CHECKPOINT_FOURCC('C', 'T', 'R', 'C')
-#define NATIVE_CHECKPOINT_VERSION            3u
+#define NATIVE_CHECKPOINT_VERSION            5u
 #define NATIVE_CHECKPOINT_ADDRESS_RANGE_CAP  19u
 #define NATIVE_CHECKPOINT_POINTER_SLOT_CAP   65536u
 #define NATIVE_CHECKPOINT_CREDITS_STRING_CAP 4096u
@@ -1405,6 +1405,16 @@ internal void NativeCheckpoint_RelocateDataPointers(const struct NativeCheckpoin
 	{
 		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &data.hudStructPtr[i]);
 	}
+	for (u32 i = 0; i < len(data.endRaceQuips.vsMetadata); i++)
+	{
+		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &data.endRaceQuips.vsMetadata[i].ptrQuipStrCurr);
+		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &data.endRaceQuips.vsMetadata[i].ptrQuipStrNext);
+	}
+	for (u32 i = 0; i < len(data.endRaceQuips.battleMetadata); i++)
+	{
+		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &data.endRaceQuips.battleMetadata[i].ptrQuipStrCurr);
+		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &data.endRaceQuips.battleMetadata[i].ptrQuipStrNext);
+	}
 }
 
 internal void NativeCheckpoint_RelocateLanguagePointers(const struct NativeCheckpointHeader *oldHeader, const struct NativeCheckpointHeader *liveHeader)
@@ -1758,8 +1768,8 @@ internal void NativeCheckpoint_RelocateGameTrackerPointers(const struct NativeCh
 	for (u32 i = 0; i < len(gGT->DecalMP); i++)
 	{
 		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &gGT->DecalMP[i].inst);
-		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &gGT->DecalMP[i].ptrOT1);
-		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &gGT->DecalMP[i].ptrOT2);
+		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &gGT->DecalMP[i].pb.ptrOT);
+		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &gGT->DecalMP[i].pb.renderBucketOTRangeEnd);
 	}
 	NativeCheckpoint_RelocatePushBuffer(oldHeader, liveHeader, &gGT->pushBuffer_UI);
 	for (u32 i = 0; i < len(gGT->cameraDC); i++)
@@ -1817,9 +1827,9 @@ internal void NativeCheckpoint_RelocateGameTrackerPointers(const struct NativeCh
 	NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &gGT->particleList_heatWarp);
 	NativeCheckpoint_RelocateParticleList(oldHeader, liveHeader, gGT->particleList_ordinary, gGT->JitPools.particle.maxItems);
 	NativeCheckpoint_RelocateParticleList(oldHeader, liveHeader, gGT->particleList_heatWarp, gGT->JitPools.particle.maxItems);
-	for (u32 i = 0; i < len(gGT->trafficLightIcon); i++)
+	for (u32 i = 0; i < len(gGT->trafficLights.all); i++)
 	{
-		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &gGT->trafficLightIcon[i]);
+		NativeCheckpoint_RelocatePointerSlot(oldHeader, liveHeader, &gGT->trafficLights.all[i]);
 	}
 	for (u32 i = 0; i < len(gGT->ptrIcons); i++)
 	{

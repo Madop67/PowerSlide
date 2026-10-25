@@ -18,6 +18,7 @@ int CAM_MapRange_PosPoints(SVec3 *pos1, SVec3 *pos2, SVec3 *currPos);
 void CAM_SetDesiredPosRot(struct CameraDC *cDC, const SVec3 *pos, const SVec3 *rot);
 
 void BOTS_Adv_AdjustDifficulty(void);
+void BOTS_EmptyFunc(void);
 void BOTS_UpdateGlobals(void);
 void BOTS_GotoStartingLine(struct Driver *d);
 
@@ -472,11 +473,11 @@ void ConvertRotToMatrix_Transpose(MATRIX *m, const SVec3 *rot);
 void MatrixRotate(void *dst, MATRIX *src, MATRIX *rot);
 void Unknown_8006c49c(u32 *r0, u32 *r1, u32 *r2, u32 *r3, u32 *r4);
 #ifdef CTR_NATIVE
-// NOTE(aalhendi): Retail GTE loaders take t3-t7, not five C ABI arguments.
+// NOTE(aalhendi): Retail matrix kernels/loaders take t3-t7, not C ABI arguments.
+void Unknown_8006c558(u32 *r0, u32 *r1, u32 *r2, u32 *r3, u32 *r4);
 void MATRIX_SET_r11r12r13r14r15(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4);
 void Unknown_8006c600(u32 r0, u32 r1, u32 r2, u32 r3, u32 r4);
 #endif
-void Unknown_8006c558(u32 *r0, u32 *r1, u32 *r2, u32 *r3, u32 *r4);
 int SquareRoot0_stub(int param_1);
 VECTOR *Unknown_8006c6c8(VECTOR *input, VECTOR *output, MATRIX *matrix);
 VECTOR *ApplyMatrixLV_stub(VECTOR *input, VECTOR *output);
@@ -628,8 +629,7 @@ s32 PushBuffer_GetFrustumSavedCameraZ(void);
 void PushBuffer_SetPsyqGeom(struct PushBuffer *pb);
 void PushBuffer_SetMatrixVP(struct PushBuffer *pb);
 
-void PushBuffer_SetDrawEnv_DecalMP(void *ot, struct DB *backBuffer, RECT *viewport, s16 offsetX, s16 offsetY, u8 dtd, u8 dfe, u8 isbg, u8 tpageUpper,
-                                   u8 tpageLower);
+void PushBuffer_SetDrawEnv_DecalMP(void *ot, struct DB *backBuffer, RECT *viewport, s16 offsetX, s16 offsetY, u8 r0, u8 g0, u8 b0, s32 dtd, s32 isbg);
 void PushBuffer_SetDrawEnv_Normal(void *ot, struct PushBuffer *pb, struct DB *backBuffer, s16 *copyDrawEnvNULL, int isbg);
 
 void PushBuffer_FadeOneWindow(struct PushBuffer *pb);
@@ -672,10 +672,10 @@ int UI_ConvertY_2(int posY, int scale);
 void UI_INSTANCE_InitAll(void);
 struct Instance *UI_INSTANCE_BirthWithThread(int modelID, int tickFunc, int hudSlot, int rotateToHud, int pushBuffer, int threadName);
 
-void UI_DrawBattleScores(int posX, int posY, struct Driver *d);
+void UI_DrawBattleScores(s32 posX, s32 posY, struct Driver *d);
 void UI_BattleDrawHeadArrows(struct Driver *player);
 void UI_TrackerSelf(struct Driver *d);
-void UI_DrawLapCount(s16 posX, int posY, int unusedScale, struct Driver *d);
+void UI_DrawLapCount(s16 posX, s32 posY, s32 unusedScale, struct Driver *d);
 void UI_Weapon_DrawSelf(s16 posX, s16 posY, s16 scale, struct Driver *d);
 void UI_Weapon_DrawBG(s16 posX, s16 posY, s16 scale, struct Driver *d);
 void UI_WeaponBG_AnimateShine(void);
@@ -687,7 +687,7 @@ void UI_DrawNumRelic(s16 posX, s16 posY, struct Driver *driver);
 void UI_DrawNumTrophy(s16 posX, s16 posY, struct Driver *driver);
 void UI_DrawNumCrystal(s16 posX, s16 posY, struct Driver *d);
 void UI_DrawNumTimebox(s16 posX, s16 posY, struct Driver *d);
-void UI_DrawSpeedBG(void);
+void UI_DrawSpeedBG(s16 posX, s16 posY, struct Driver *driver);
 void UI_DrawSpeedNeedle(s16 posX, s16 posY, struct Driver *driver);
 void UI_JumpMeter_Draw(s16 posX, s16 posY, struct Driver *driver);
 void UI_JumpMeter_Update(struct Driver *d);
@@ -707,7 +707,7 @@ void UI_CupStandings_FinalizeCupRanks(void);
 void UI_CupStandings_UpdateCupRanks(void);
 void UI_CupStandings_InputAndDraw(void);
 
-void UI_SaveLapTime(int numLaps, int lapTime, s16 driverID);
+void UI_SaveLapTime(s32 lapIndex, s32 lapTime, s16 driverID);
 
 void UI_Map_GetIconPos(struct UIMap *map, s32 *posX, s32 *posY);
 void UI_Map_DrawMap(struct Icon *mapTop, struct Icon *mapBottom, s32 posX, s32 posY, struct PrimMem *primMem, u32 *otMem, u8 colorID);

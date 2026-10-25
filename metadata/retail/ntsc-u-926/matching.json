@@ -9,7 +9,7 @@
       "directory": "externals/old-gcc/prebuilt/linux-i386/2.8.1",
       "executable": "gcc",
       "sha256": {
-        "cc1": "1a48ec5ac87a146a074a9d66d7a67734a4d1ad56553d02d91e8b71c7fecc2d52",
+        "cc1": "2258e9e4c4feefd7478ca2f665e9792dd2e4998ba6b3987a8bfe2690644f2529",
         "cc1plus": "93e7b36546532deec58cbc221df4d2c2894d444b5685b31a439c46cc597a9572",
         "cpp": "8d7f4e90f995089a6c2d62214b607fc77acf43b61f60a871d130d713d9ac96bb",
         "g++": "a2cf0a5f0a21fcd4836c6f7ac66f346ba5594c1e4d4ab9d88c48c73c77f876fd",
@@ -22,7 +22,7 @@
       "entrypoint": "maspsx.py",
       "sha256": {
         "maspsx.py": "d170463b0c519a825db97d3f30ffbe0228e4cf642de2dc64fb30f90f118c2b0c",
-        "maspsx/__init__.py": "2cbdbc27537bf9f53413e29c558a869b39f671be4a72429618dca39b07e377fa"
+        "maspsx/__init__.py": "fb5eccb7d6570a5ffc23de4e289a3f88199f30d46c0677aee4acda37f81d0c4e"
       },
       "aspsx_version": "2.77"
     },
@@ -192,6 +192,22 @@
     }
   ],
   "targets": [
+    {
+      "name": "push-buffer-plane",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "PushBuffer_SetFrustumPlane",
+      "end_symbol": "PushBuffer_UpdateFrustum",
+      "symbol_prefix": "PushBuffer_",
+      "source": "game/PushBuffer/PushBuffer_SetFrustumPlane.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
     {
       "name": "221",
       "kind": "artifact",
@@ -795,6 +811,7 @@
         {"output_section": ".rdata.loading_names", "symbol": "rdataLoadingStrings", "symbol_address": "0x800112e4", "offset": "0x0", "size": "0x1a8"},
         {"output_section": ".rdata.misc.menus", "symbol": "rdataMiscMenus", "symbol_address": "0x80011620", "offset": "0x0", "size": "0x30"},
         {"output_section": ".rdata.misc.hud", "symbol": "rdataMiscHud", "symbol_address": "0x800116b0", "offset": "0x0", "size": "0x3c"},
+        {"output_section": ".rdata.ui.vs_wait", "symbol": "rdataUiVsWait", "symbol_address": "0x800116ec", "offset": "0x0", "size": "0x1c"},
         {"output_section": ".rdata.vehicle_names", "symbol": "rdataVehicleStrings", "symbol_address": "0x80011740", "offset": "0x0", "size": "0x260"}
       ]
     },
@@ -1545,13 +1562,15 @@
       "artifact": "exe",
       "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
       "start_symbol": "DebugFont_Init",
-      "end_symbol": "DebugFont_DrawNumbers",
+      "end_symbol": "DecalFont_GetLineWidthStrlen",
       "symbol_prefix": "DebugFont_",
       "source": "game/DebugFont.c",
       "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
       "compiler_flags": ["-O2", "-G8", "-msoft-float"],
       "small_data_limit": 8,
-      "aspsx_version": "2.77"
+      "aspsx_version": "2.77",
+      "linked_block": {}
     },
     {
       "name": "song-pool",
@@ -1776,6 +1795,29 @@
       "small_data_limit": 8,
       "aspsx_version": "2.77",
       "link_symbols": {"_gp": "0x8008cf6c", "ctr_mainFreezeGameTracker": "0x8008d2ac"}
+    },
+    {
+      "name": "main-freeze-config-setup-entry",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "MainFreeze_ConfigSetupEntry",
+      "end_symbol": "MainFreeze_MenuPtrOptions",
+      "symbol_prefix": "MainFreeze_ConfigSetupEntry",
+      "source": "game/MAIN/MainFreeze.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/namespaces/main-freeze/retail_symbols.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "link_symbols": {
+        "_gp": "0x8008cf6c",
+        "ctr_mainFreezeGameTracker": "0x8008d2ac",
+        "ctr_mainFreezeLanguageStrings": "0x8008d878",
+        "ctr_mainFreezeNamcoCenterY": "0x8008d2dc",
+        "ctr_mainFreezeWheelCenterY": "0x8008d2d8",
+        "ctr_mainFreezeDisplayValue": "0x8008d2f0"
+      }
     },
     {
       "name": "main-freeze-menu-quit",
@@ -2007,6 +2049,7 @@
       "symbol_prefix": "MEMCARD_Load",
       "source": "game/MEMCARD/MEMCARD_RetailTransfer.c",
       "include_directories": ["include"],
+      "forced_includes": ["tools/matching/namespaces/memcard-transfer/retail_symbols.h"],
       "compiler_flags": ["-O2", "-G8", "-msoft-float"],
       "small_data_limit": 8,
       "aspsx_version": "2.77",
@@ -2022,9 +2065,27 @@
       "symbol_prefix": "MEMCARD_Save",
       "source": "game/MEMCARD/MEMCARD_RetailTransfer.c",
       "include_directories": ["include"],
+      "forced_includes": ["tools/matching/namespaces/memcard-transfer/retail_symbols.h"],
       "compiler_flags": ["-O2", "-G8", "-msoft-float"],
       "small_data_limit": 8,
       "aspsx_version": "2.77",
+      "link_symbols": {"_gp": "0x8008cf6c"}
+    },
+    {
+      "name": "memcard-transfer",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "MEMCARD_Load",
+      "end_symbol": "MEMCARD_Format",
+      "symbol_prefix": "MEMCARD_",
+      "source": "game/MEMCARD/MEMCARD_RetailTransfer.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/namespaces/memcard-transfer/retail_symbols.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {},
       "link_symbols": {"_gp": "0x8008cf6c"}
     },
     {
@@ -2143,6 +2204,20 @@
       "aspsx_version": "2.77"
     },
     {
+      "name": "matrix-rotation-light",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "symbol_prefix": "",
+      "sources": ["game/MATH/MATH_7_MatrixStubs.c", "game/MATH/MATH_LightMatrix.c"],
+      "include_directories": ["include"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {},
+      "code_intervals": [{"start_symbol": "Unknown_8006c558", "end_symbol": "Unknown_8006c600"}, {"start_symbol": "ApplyMatrixLV_stub", "end_symbol": "Unknown_8006c778"}]
+    },
+    {
       "name": "matrix-load-light-gte",
       "kind": "resident",
       "artifact": "exe",
@@ -2253,15 +2328,16 @@
       "artifact": "exe",
       "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
       "start_symbol": "PROC_PerBspLeaf_CheckInstances",
-      "end_symbol": "PROC_StartSearch_Self",
-      "symbol_prefix": "PROC_PerBspLeaf_CheckInstances",
+      "end_symbol": "PROC_CollideHitboxWithBucket",
+      "symbol_prefix": "PROC_",
       "source": "game/PROC.c",
       "include_directories": ["include"],
       "forced_includes": ["tools/matching/retail_bindings.h"],
       "compiler_flags": ["-O2", "-G8", "-msoft-float"],
       "small_data_limit": 8,
       "aspsx_version": "2.77",
-      "link_symbols": {"_gp": "0x8008cf6c"}
+      "link_symbols": {"_gp": "0x8008cf6c"},
+      "linked_block": {}
     },
     {
       "name": "proc-hitbox-bucket",
@@ -2545,6 +2621,51 @@
       "compiler_flags": ["-O2", "-G8", "-msoft-float"],
       "small_data_limit": 8,
       "aspsx_version": "2.77"
+    },
+    {
+      "name": "main-db",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "MainDB_GetClipSize",
+      "end_symbol": "MainDrawCb_DrawSync",
+      "symbol_prefix": "MainDB_",
+      "source": "game/MAIN/MainDB.c",
+      "include_directories": ["include"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "link_symbols": {
+        "_gp": "0x8008cf6c",
+        "sdata_static": "0x8008cf6c"
+      },
+      "function_rodata_addresses": {
+        "MainDB_GetClipSize": "0x8001148c"
+      },
+      "linked_block": {
+        "rodata_address": "0x8001148c",
+        "rodata_size": "0x90"
+      }
+    },
+    {
+      "name": "main-game-start",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "MainGameStart_Initialize",
+      "end_symbol": "MainInit_VisMem",
+      "symbol_prefix": "MainGameStart_",
+      "source": "game/MAIN/MainGameStart.c",
+      "include_directories": ["include"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "link_symbols": {
+        "_gp": "0x8008cf6c",
+        "ctr_mainGameStartGameTracker": "0x8008d2ac"
+      },
+      "linked_block": {},
+      "forced_includes": ["tools/matching/namespaces/main-game-start/retail_symbols.h"]
     },
     {
       "name": "load-file",
@@ -3111,6 +3232,22 @@
       "aspsx_version": "2.77"
     },
     {
+      "name": "main-draw-cb",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "MainDrawCb_DrawSync",
+      "end_symbol": "MainFrame_TogglePauseAudio",
+      "symbol_prefix": "MainDrawCb_",
+      "source": "game/MAIN/MainDrawCb.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/namespaces/main-draw-cb/retail_symbols.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "link_symbols": {"_gp": "0x8008cf6c", "ctr_mainDrawCbGameTracker": "0x8008d2ac"}
+    },
+    {
       "name": "BOTS_EmptyFunc",
       "kind": "probe",
       "symbol": "BOTS_EmptyFunc",
@@ -3320,6 +3457,35 @@
       }
     },
     {
+      "name": "main-race-track",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "MainRaceTrack_StartLoad",
+      "end_symbol": "MainStats_ClearBattleVS",
+      "symbol_prefix": "MainRaceTrack_",
+      "source": "game/MAIN/MainRaceTrack.c",
+      "include_directories": [
+        "include"
+      ],
+      "compiler_flags": [
+        "-O2",
+        "-G8",
+        "-msoft-float"
+      ],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {},
+      "forced_includes": [
+        "tools/matching/namespaces/main-race-track/retail_symbols.h"
+      ],
+      "link_symbols": {
+        "_gp": "0x8008cf6c",
+        "ctr_mainRaceTrackGameTracker": "0x8008d2ac",
+        "ctr_mainRaceTrackRequestedLevel": "0x8008d0fc"
+      }
+    },
+    {
       "kind": "resident",
       "artifact": "exe",
       "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
@@ -3345,6 +3511,33 @@
       "forced_includes": [
         "tools/matching/namespaces/howl-garage/retail_symbols.h"
       ]
+    },
+    {
+      "name": "main-stats",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "MainStats_ClearBattleVS",
+      "end_symbol": "MATH_Sin",
+      "symbol_prefix": "MainStats_",
+      "source": "game/MAIN/MainStats.c",
+      "include_directories": [
+        "include"
+      ],
+      "compiler_flags": [
+        "-O2",
+        "-G8",
+        "-msoft-float"
+      ],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {},
+      "forced_includes": [
+        "tools/matching/retail_bindings.h"
+      ],
+      "link_symbols": {
+        "_gp": "0x8008cf6c"
+      }
     },
     {
       "name": "load-howl-complete",
@@ -3461,6 +3654,57 @@
       }
     },
     {
+      "name": "coll-barycentrics",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "COLL_FIXED_TRIANGL_Barycentrics",
+      "end_symbol": "COLL_FIXED_TRIANGL_UNUSED",
+      "symbol_prefix": "COLL_FIXED_TRIANGL_Barycentrics",
+      "source": "game/COLL/COLL_Barycentrics.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float", "-ffunction-sections"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "coll-triangle-normal",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "COLL_FIXED_TRIANGL_GetNormVec",
+      "end_symbol": "COLL_FIXED_QUADBLK_TestTriangles",
+      "symbol_prefix": "COLL_FIXED_TRIANGL_GetNormVec",
+      "source": "game/COLL/COLL_GetNormVec.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float", "-ffunction-sections"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "coll-instance-query",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "COLL_FIXED_INSTANC_TestPoint",
+      "end_symbol": "COLL_FIXED_PlayerSearch",
+      "symbol_prefix": "COLL_",
+      "sources": [
+        "game/COLL/COLL_InstancePoint.c",
+        "game/COLL/COLL_InstanceQuery.c"
+      ],
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
       "name": "cam-setup",
       "kind": "resident",
       "artifact": "exe",
@@ -3540,14 +3784,664 @@
       "kind": "resident",
       "artifact": "exe",
       "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
-      "start_symbol": "CAM_LookAtPosition",
-      "end_symbol": "CAM_FollowDriver_Normal",
+      "code_intervals": [
+        {
+          "start_symbol": "CAM_LookAtPosition",
+          "end_symbol": "CAM_FollowDriver_Normal"
+        },
+        {
+          "start_symbol": "CAM_MapRange_PosPoints",
+          "end_symbol": "CAM_ThTick"
+        }
+      ],
       "symbol_prefix": "CAM_",
       "source": "game/CAM.c",
       "include_directories": ["include"],
       "forced_includes": ["tools/matching/retail_bindings.h"],
       "compiler_flags": ["-O2", "-G8", "-msoft-float"],
       "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "display-swap",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "DISPLAY_Swap",
+      "end_symbol": "DotLights_Video",
+      "symbol_prefix": "DISPLAY_",
+      "source": "game/Display.c",
+      "include_directories": [
+        "include"
+      ],
+      "forced_includes": [
+        "tools/matching/retail_bindings.h"
+      ],
+      "compiler_flags": [
+        "-O2",
+        "-G8",
+        "-msoft-float"
+      ],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "push-buffer-setup",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "PushBuffer_Init",
+      "end_symbol": "PushBuffer_SetMatrixVP",
+      "symbol_prefix": "PushBuffer_",
+      "source": "game/PushBuffer.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "push-buffer-fades",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "PushBuffer_FadeOneWindow",
+      "end_symbol": "QueueLoadTrack_MenuProc",
+      "symbol_prefix": "PushBuffer_",
+      "source": "game/PushBuffer.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "lh-matrix-parent",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "LHMatrix_Parent",
+      "end_symbol": "LibraryOfModels_Store",
+      "symbol_prefix": "LHMatrix_",
+      "source": "game/LHMatrix.c",
+      "include_directories": ["include"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "linked-collide",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "LinkedCollide_Radius",
+      "end_symbol": "LIST_Clear",
+      "symbol_prefix": "LinkedCollide_",
+      "source": "game/LinkedCollide.c",
+      "include_directories": ["include"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-reward",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_SaveLapTime",
+      "end_symbol": "UI_ConvertX_2",
+      "symbol_prefix": "UI_",
+      "source": "game/UI/UI_Reward.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "flare",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "FLARE_ThTick",
+      "end_symbol": "GAMEPAD_Init",
+      "symbol_prefix": "FLARE_",
+      "source": "game/FLARE.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "podium-models",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "Podium_InitModels",
+      "end_symbol": "PROC_DestroyTracker",
+      "symbol_prefix": "Podium_",
+      "source": "game/Podium.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "function_rodata_addresses": {"Podium_InitModels": "0x80011600"},
+      "linked_block": {"rodata_address": "0x80011600", "rodata_size": 32}
+    },
+    {
+      "name": "dotlights",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "DotLights_Video",
+      "end_symbol": "DropRain_MakeSound",
+      "symbol_prefix": "DotLights_",
+      "source": "game/DotLights.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "decal-mp",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "DecalMP_01",
+      "end_symbol": "DISPLAY_Blur_SubFunc",
+      "symbol_prefix": "DecalMP_",
+      "source": "game/DecalMP.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "vector",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "Vector_SpecLightSpin2D",
+      "end_symbol": "VehAfterColl_GetSurface",
+      "symbol_prefix": "Vector_",
+      "source": "game/Vector.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-limit-clock",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_DrawLimitClock",
+      "end_symbol": "UI_BattleDrawHeadArrows",
+      "symbol_prefix": "UI_DrawLimitClock",
+      "source": "game/UI/UI_LimitClock.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float", "-fno-strength-reduce"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-race-hud-text",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_DrawPosSuffix",
+      "end_symbol": "UI_Weapon_DrawSelf",
+      "symbol_prefix": "UI_Draw",
+      "source": "game/UI/UI_RaceHudText.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-cup-ranks",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_CupStandings_FinalizeCupRanks",
+      "end_symbol": "UI_CupStandings_InputAndDraw",
+      "symbol_prefix": "UI_CupStandings_",
+      "source": "game/UI/UI_CupRanks.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "load-lang-file",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "LOAD_LangFile",
+      "end_symbol": "LOAD_GetBigfileIndex",
+      "symbol_prefix": "LOAD_LangFile",
+      "source": "game/LOAD/LOAD_LangFile.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "link_symbols": {"LOAD_ReadFile_ex": "0x800321b4"},
+      "linked_block": {}
+    },
+    {
+      "name": "load-init-cdvol",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "LOAD_InitCDvol",
+      "end_symbol": "CD_init",
+      "symbol_prefix": "LOAD_",
+      "source": "game/LOAD/LOAD_File.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-vs-quip-assign",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_VsQuipReadDriver",
+      "end_symbol": "UI_VsWaitForPressX",
+      "symbol_prefix": "UI_VsQuip",
+      "source": "game/UI/UI_VsQuip.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "function_rodata_addresses": {"UI_VsQuipAssignAll": "0x80011718"},
+      "linked_block": {"rodata_address": "0x80011718", "rodata_size": "0x28"}
+    },
+    {
+      "name": "ui-race-end-clock",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_RaceEnd_GetDriverClock",
+      "end_symbol": "UI_RaceStart_IntroText1P",
+      "symbol_prefix": "UI_RaceEnd_GetDriverClock",
+      "source": "game/UI/UI_RaceEndClock.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-jump-meter-update",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_JumpMeter_Update",
+      "end_symbol": "UI_JumpMeter_Draw",
+      "symbol_prefix": "UI_JumpMeter_Update",
+      "source": "game/UI/UI_JumpMeter_Update.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-jump-meter-draw",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_JumpMeter_Draw",
+      "end_symbol": "UI_DrawSlideMeter",
+      "symbol_prefix": "UI_JumpMeter_Draw",
+      "source": "game/UI/UI_JumpMeter_Draw.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-slide-meter",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_DrawSlideMeter",
+      "end_symbol": "UI_DrawRankedDrivers",
+      "symbol_prefix": "UI_DrawSlideMeter",
+      "source": "game/UI/UI_DrawSlideMeter.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-weapon-drawself",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_Weapon_DrawSelf",
+      "end_symbol": "UI_Weapon_DrawBG",
+      "symbol_prefix": "UI_Weapon_DrawSelf",
+      "source": "game/UI/UI_Weapon_DrawSelf.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "ui-weapon-drawbg",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "start_symbol": "UI_Weapon_DrawBG",
+      "end_symbol": "UI_DrawNumWumpa",
+      "symbol_prefix": "UI_Weapon_DrawBG",
+      "source": "game/UI/UI_Weapon_DrawBG.c",
+      "include_directories": ["include"],
+      "forced_includes": ["tools/matching/retail_bindings.h"],
+      "compiler_flags": ["-O2", "-G8", "-msoft-float"],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "psx-bios-call-gates",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "symbol_prefix": "",
+      "source": "game/PSX/PSX_BIOS_CallGates.c",
+      "code_intervals": [
+        {
+          "start_symbol": "memset",
+          "end_symbol": "strcmp"
+        },
+        {
+          "start_symbol": "strcmp",
+          "end_symbol": "SetTransMatrix"
+        },
+        {
+          "start_symbol": "strncpy",
+          "end_symbol": "SpuSetTransferMode"
+        },
+        {
+          "start_symbol": "strcpy",
+          "end_symbol": "SpuSetReverbModeParam"
+        },
+        {
+          "start_symbol": "LoadExec",
+          "end_symbol": "SetGeomScreen"
+        },
+        {
+          "start_symbol": "memcpy",
+          "end_symbol": "strlen"
+        },
+        {
+          "start_symbol": "strlen",
+          "end_symbol": "SetVideoMode"
+        },
+        {
+          "start_symbol": "_96_init",
+          "end_symbol": "SetDefDrawEnv"
+        },
+        {
+          "start_symbol": "_card_info",
+          "end_symbol": "erase"
+        },
+        {
+          "start_symbol": "erase",
+          "end_symbol": "lseek"
+        },
+        {
+          "start_symbol": "lseek",
+          "end_symbol": "close"
+        },
+        {
+          "start_symbol": "close",
+          "end_symbol": "InitCARD"
+        },
+        {
+          "start_symbol": "write",
+          "end_symbol": "EnableEvent"
+        },
+        {
+          "start_symbol": "EnableEvent",
+          "end_symbol": "_bu_init"
+        },
+        {
+          "start_symbol": "_bu_init",
+          "end_symbol": "nextfile"
+        },
+        {
+          "start_symbol": "nextfile",
+          "end_symbol": "_card_clear"
+        },
+        {
+          "start_symbol": "format",
+          "end_symbol": "OpenEvent"
+        },
+        {
+          "start_symbol": "OpenEvent",
+          "end_symbol": "read"
+        },
+        {
+          "start_symbol": "read",
+          "end_symbol": "TestEvent"
+        },
+        {
+          "start_symbol": "TestEvent",
+          "end_symbol": "open"
+        },
+        {
+          "start_symbol": "open",
+          "end_symbol": "firstfile"
+        },
+        {
+          "start_symbol": "CloseEvent",
+          "end_symbol": "_card_load"
+        },
+        {
+          "start_symbol": "_card_load",
+          "end_symbol": "sprintf"
+        },
+        {
+          "start_symbol": "strcat",
+          "end_symbol": "rand"
+        },
+        {
+          "start_symbol": "printf",
+          "end_symbol": "DeliverEvent"
+        },
+        {
+          "start_symbol": "DeliverEvent",
+          "end_symbol": "_SpuCallback"
+        },
+        {
+          "start_symbol": "ChangeClearPAD",
+          "end_symbol": "ChangeClearRCnt"
+        },
+        {
+          "start_symbol": "SysDeqIntRP",
+          "end_symbol": "SysEnqIntRP"
+        },
+        {
+          "start_symbol": "SysEnqIntRP",
+          "end_symbol": "_SpuIsInAllocateArea_"
+        },
+        {
+          "start_symbol": "setjmp",
+          "end_symbol": "HookEntryInt"
+        },
+        {
+          "start_symbol": "HookEntryInt",
+          "end_symbol": "startIntrDMA"
+        },
+        {
+          "start_symbol": "ReturnFromException",
+          "end_symbol": "ResetEntryInt"
+        },
+        {
+          "start_symbol": "ResetEntryInt",
+          "end_symbol": "_patch_gte"
+        },
+        {
+          "start_symbol": "StartCARD2",
+          "end_symbol": "StopCARD2"
+        },
+        {
+          "start_symbol": "StopCARD2",
+          "end_symbol": "_ExitCard"
+        },
+        {
+          "start_symbol": "_new_card",
+          "end_symbol": "_card_write"
+        },
+        {
+          "start_symbol": "_card_write",
+          "end_symbol": "firstfile2"
+        },
+        {
+          "start_symbol": "firstfile2",
+          "end_symbol": "memchr"
+        },
+        {
+          "start_symbol": "memchr",
+          "end_symbol": "init_ring_status"
+        },
+        {
+          "start_symbol": "bzero",
+          "end_symbol": "WaitEvent"
+        },
+        {
+          "start_symbol": "WaitEvent",
+          "end_symbol": "FlushCache"
+        },
+        {
+          "start_symbol": "FlushCache",
+          "end_symbol": "data"
+        }
+      ],
+      "include_directories": [
+        "include"
+      ],
+      "compiler_flags": [
+        "-O2",
+        "-G8",
+        "-msoft-float"
+      ],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "psx-sdk-leaves",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "symbol_prefix": "",
+      "source": "game/PSX/PSX_SDK_Leaves.c",
+      "code_intervals": [
+        {
+          "start_symbol": "ExitCriticalSection",
+          "end_symbol": "SpuSetCommonMasterVolume"
+        },
+        {
+          "start_symbol": "EnterCriticalSection",
+          "end_symbol": "strncmp"
+        },
+        {
+          "start_symbol": "SetGeomScreen",
+          "end_symbol": "SetGeomOffset"
+        },
+        {
+          "start_symbol": "PadSetCmd",
+          "end_symbol": "_padSendAtLoadInfo"
+        }
+      ],
+      "include_directories": [
+        "include"
+      ],
+      "compiler_flags": [
+        "-O2",
+        "-G8",
+        "-msoft-float"
+      ],
+      "small_data_limit": 8,
+      "aspsx_version": "2.77",
+      "linked_block": {}
+    },
+    {
+      "name": "psx-sdk-cd-core",
+      "kind": "resident",
+      "artifact": "exe",
+      "symbol_file": "metadata/retail/ntsc-u-926/symbols/syms926.txt",
+      "symbol_prefix": "",
+      "sources": [
+        "game/PSX/PSX_SDK_CDCore.c",
+        "game/PSX/PSX_SDK_CDState.c",
+        "game/PSX/PSX_SDK_CdReset.c"
+      ],
+      "source_flags": {
+        "game/PSX/PSX_SDK_CdReset.c": ["-fno-delayed-branch"]
+      },
+      "code_intervals": [{"start_symbol": "CdStatus", "end_symbol": "CdMode"}, {"start_symbol": "CdMode", "end_symbol": "CdLastCom"}, {"start_symbol": "CdLastCom", "end_symbol": "CdLastPos"}, {"start_symbol": "CdLastPos", "end_symbol": "CdReset"}, {"start_symbol": "CdReset", "end_symbol": "CdSetDebug"}, {"start_symbol": "CdSetDebug", "end_symbol": "CdReady"}, {"start_symbol": "CdSyncCallback", "end_symbol": "CdReadyCallback"}, {"start_symbol": "CdReadyCallback", "end_symbol": "CdControl"}, {"start_symbol": "CdIntToPos", "end_symbol": "CdPosToInt"}, {"start_symbol": "CdPosToInt", "end_symbol": "CdInit"}],
+      "linker_script": "tools/matching/psx-cd-core.ld",
+      "data_ranges": [
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_cbsync", "symbol_address": "0x8008c41c", "offset": 0, "size": 4},
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_cbready", "symbol_address": "0x8008c420", "offset": 0, "size": 4},
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_debug", "symbol_address": "0x8008c424", "offset": 0, "size": 4},
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_status", "symbol_address": "0x8008c428", "offset": 0, "size": 4},
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_status1", "symbol_address": "0x8008c42c", "offset": 0, "size": 4},
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_nopen", "symbol_address": "0x8008c430", "offset": 0, "size": 4},
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_pos", "symbol_address": "0x8008c434", "offset": 0, "size": 4},
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_mode", "symbol_address": "0x8008c438", "offset": 0, "size": 1},
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_com", "symbol_address": "0x8008c439", "offset": 0, "size": 1},
+        {"output_section": ".data.sdk_cd_core", "symbol": "CD_unresolved8008c43a", "symbol_address": "0x8008c43a", "offset": 0, "size": 2},
+        {"output_section": ".data.psxCdReg0", "symbol": "psxCdReg0", "symbol_address": "0x8008c6e0", "offset": 0, "size": 4},
+        {"output_section": ".data.psxCdReg2", "symbol": "psxCdReg2", "symbol_address": "0x8008c6e8", "offset": 0, "size": 4},
+        {"output_section": ".data.psxCdReg3", "symbol": "psxCdReg3", "symbol_address": "0x8008c6ec", "offset": 0, "size": 4},
+        {"output_section": ".data.CD_resetWordReg", "symbol": "CD_resetWordReg", "symbol_address": "0x8008c6f0", "offset": 0, "size": 4},
+        {"output_section": ".data.CD_controllerState", "symbol": "CD_controllerState", "symbol_address": "0x8008c6f8", "offset": 0, "size": 3}
+      ],
+      "include_directories": ["include"],
+      "compiler_flags": ["-O2", "-G0", "-msoft-float"],
+      "small_data_limit": 0,
       "aspsx_version": "2.77",
       "linked_block": {}
     },

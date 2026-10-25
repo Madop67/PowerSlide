@@ -4,6 +4,8 @@
 #include <platform/native_gpu.h>
 #endif
 
+#include "RenderBucket_ProjectedBounds.h"
+
 
 struct RenderBucketEntry
 {
@@ -740,22 +742,19 @@ static const u8 sRenderBucketKeyRelicBrightness8008a2c4[0x80] = {
 #define RB_MODEL_ALWAYS_POINT_NORTH          0x1U
 CTR_STATIC_ASSERT(VISIBLE_DURING_GAMEPLAY == RB_INSTANCE_SKIP_OT_RANGE);
 
+#include "RenderBucket_CopyDispatchTables.c"
+
+#ifndef CTR_NATIVE
+// NOTE(aalhendi): Keep the typed C provider apart from the scratch-register entry.
+#define RenderBucket_CopyDispatchTables RenderBucket_CopyDispatchTables_Context
+#endif
+
 static void RenderBucket_CopyDispatchTables(void)
 {
 	struct RenderBucketExecuteScratch *scratch = RenderBucket_Scratch();
-	u32 *dst0 = scratch->setupDispatch;
-	u32 *dst1 = scratch->primDispatch;
 
-	// Copy two eight-word windows from 0x8008a428/0x8008a444 into scratch 0x94/0xc4.
-	for (int i = 0; i < 8; i++)
-	{
-		dst0[i] = sRenderBucketDispatchTable8008a428[i];
-	}
-
-	for (int i = 0; i < 8; i++)
-	{
-		dst1[i] = sRenderBucketDispatchTable8008a444[i];
-	}
+	RenderBucket_CopyDispatchWindow(sRenderBucketDispatchTable8008a428, scratch->setupDispatch);
+	RenderBucket_CopyDispatchWindow(sRenderBucketDispatchTable8008a444, scratch->primDispatch);
 }
 
 static void RenderBucket_WriteInstanceCallbackLabels(struct Instance *inst, u32 instFlags)
@@ -988,45 +987,7 @@ static void RenderBucket_BoundsInit(struct RenderBucketBounds *bounds, u32 sxy, 
 
 static void RenderBucket_BoundsUpdate_80071524(struct RenderBucketBounds *bounds, u32 sxy, int depth)
 {
-	int x;
-	int y;
-	s32 diff;
-
-	// Native models the retail t1/t2 -> t3/t4/t5/t6/t7/s0 tuple explicitly.
-	y = RenderBucket_PackedSxyY(sxy);
-	diff = RenderBucket_MipsSub(y, bounds->minY);
-	if (diff < 0)
-	{
-		bounds->minY = y;
-	}
-	diff = RenderBucket_MipsSub(y, bounds->maxY);
-	if (diff > 0)
-	{
-		bounds->maxY = y;
-	}
-
-	x = RenderBucket_PackedSxyX(sxy);
-	diff = RenderBucket_MipsSub(x, bounds->minX);
-	if (diff < 0)
-	{
-		bounds->minX = x;
-	}
-	diff = RenderBucket_MipsSub(x, bounds->maxX);
-	if (diff > 0)
-	{
-		bounds->maxX = x;
-	}
-
-	diff = RenderBucket_MipsSub(depth, bounds->minZ);
-	if (diff < 0)
-	{
-		bounds->minZ = depth;
-	}
-	diff = RenderBucket_MipsSub(depth, bounds->maxZ);
-	if (diff > 0)
-	{
-		bounds->maxZ = depth;
-	}
+	RENDER_BUCKET_EXPAND_PROJECTED_BOUNDS(sxy, depth, bounds->minX, bounds->maxX, bounds->minY, bounds->maxY, bounds->minZ, bounds->maxZ);
 }
 
 static void RenderBucket_ProjectBoundsUpdate3(struct RenderBucketBounds *bounds, int skipFirstPoint)
@@ -1332,11 +1293,7 @@ static void RenderBucket_GteScaleMatrixColumns(u32 *m0, u32 *m1, u32 *m2, u32 *m
 	Unknown_8006c49c(m0, m1, m2, m3, m4);
 }
 
-static void RenderBucket_GteMulLightMatrixColumns(u32 *m0, u32 *m1, u32 *m2, u32 *m3, u32 *m4)
-{
-	// Compose the retail t3/t4/t5/t6/t7 tuple through the current GTE light matrix.
-	Unknown_8006c558(m0, m1, m2, m3, m4);
-}
+#include "RenderBucket_LightMatrix.c"
 
 static void RenderBucket_BuildM3x3(struct Instance *inst, struct ModelHeader *mh, int viewDepth, struct RenderBucketMatrixState *matrixState)
 {
@@ -1757,8 +1714,8 @@ static void RenderBucket_UpdatePushBufferMetadata(struct PushBuffer *pb, const s
 	width = RenderBucket_MipsSub(bounds->maxX, bounds->minX);
 	height = RenderBucket_MipsSub(bounds->maxY, bounds->minY);
 	packedWidth = (u16)width;
-	pb->renderBucketScreenPos = RenderBucket_PackXY(bounds->minX, bounds->minY);
-	pb->renderBucketScreenSize = RenderBucket_PackXY(width, height);
+	pb->renderBucketScreenPos.packed = RenderBucket_PackXY(bounds->minX, bounds->minY);
+	pb->renderBucketScreenSize.packed = RenderBucket_PackXY(width, height);
 
 	if ((bounds->minX < 0) || (bounds->minY < 0) || (RenderBucket_MipsSub(height, 0x40) > 0) || (RenderBucket_MipsSub(packedWidth, 0x60) > 0) ||
 	    (RenderBucket_MipsSub(bounds->maxX, (s16)pb->rect.w) >= 0) || (RenderBucket_MipsSub(bounds->maxY, (s16)pb->rect.h) >= 0))
