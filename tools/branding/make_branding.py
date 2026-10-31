@@ -12,6 +12,7 @@ from that file:
   platform/macos/PowerSlide.icns    macOS app bundle icon
   android/app/src/main/res/mipmap-* Android launcher icon (adaptive, plus a
                                     legacy tile for Android 7)
+  platform/ios/AppIcon*.png         iOS home screen icon (iPhone and iPad)
 
 Needs Pillow (pip install pillow). Run it again after changing the logo and
 commit the outputs; the build does not run it.
@@ -30,6 +31,9 @@ ICNS_PATH = os.path.join(ROOT, "platform", "macos", "PowerSlide.icns")
 ANDROID_RES = os.path.join(ROOT, "android", "app", "src", "main", "res")
 # Launcher icon density buckets: 48 dp legacy icon, 108 dp adaptive layer.
 ANDROID_DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0, "xxhdpi": 3.0, "xxxhdpi": 4.0}
+IOS_DIR = os.path.join(ROOT, "platform", "ios")
+# iOS icon files (named as CFBundleIconFiles in platform/ios/Info.plist.in): points and scale.
+IOS_ICONS = [("60x60", 60, 2), ("60x60", 60, 3), ("76x76", 76, 2), ("83.5x83.5", 83.5, 2)]
 
 # Menu logo height in pixels; the menu draws it at up to about this size.
 MENU_LOGO_HEIGHT = 112
@@ -148,6 +152,23 @@ def write_android_icons(logo):
     print("wrote", os.path.relpath(os.path.join(ANDROID_RES, "mipmap-*"), ROOT))
 
 
+def make_ios_icon(logo, size):
+    """The "PS" icon on an opaque white square; iOS rounds the corners itself."""
+    icon = Image.new("RGBA", (size, size), (255, 255, 255, 255))
+    letters = make_icon(logo, round(size * 0.72))
+    offset = (size - letters.width) // 2
+    icon.alpha_composite(letters, (offset, offset))
+    return icon.convert("RGB")
+
+
+def write_ios_icons(logo):
+    os.makedirs(IOS_DIR, exist_ok=True)
+    for name, points, scale in IOS_ICONS:
+        path = os.path.join(IOS_DIR, "AppIcon%s@%dx.png" % (name, scale))
+        make_ios_icon(logo, round(points * scale)).save(path, optimize=True)
+    print("wrote", os.path.relpath(os.path.join(IOS_DIR, "AppIcon*.png"), ROOT))
+
+
 def brand_palette(image):
     """The logo's colours: the four most common fully opaque ones."""
     counts = {}
@@ -245,6 +266,7 @@ def main():
     print("wrote", os.path.relpath(ICNS_PATH, ROOT))
 
     write_android_icons(logo)
+    write_ios_icons(logo)
 
 
 if __name__ == "__main__":

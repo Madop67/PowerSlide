@@ -1,4 +1,4 @@
-// Native entrypoint for the wasm sandbox build (macOS, Linux, Android).
+// Native entrypoint for the wasm sandbox build (macOS, Linux, Android, iOS).
 //
 // Instantiates the wasm2c-translated guest module (game + platform code built
 // for wasm32-wasip1), wires up the WASI/SDL/GL imports, and runs `_start`.
@@ -11,9 +11,10 @@
 #include <unistd.h>
 
 #include "host_mem.h"
+#include "host_platform.h"
 #include "host_wasi.h"
 
-#if defined(__APPLE__)
+#if defined(HOST_MACOS)
 #include "host_setup_macos.h"
 #else
 #include <SDL3/SDL.h>
@@ -179,7 +180,7 @@ static char s_hostConsoleLog[4096];
 
 static void HostMain_ShowFatal(const char *message, const char *logPath)
 {
-#if defined(__APPLE__)
+#if defined(HOST_MACOS)
 	HostSetup_ShowFatal(message, logPath);
 #else
 	NativeSetup_ShowFatal(message, logPath);
@@ -207,7 +208,7 @@ static void HostMain_OnGuestExit(int code)
 // portable launch that keeps the current behaviour.
 static int HostMain_ChooseBaseDir(int argc, char **argv, char *baseDir, size_t baseDirSize)
 {
-#if defined(__APPLE__)
+#if defined(HOST_MACOS)
 	(void)argc;
 	(void)argv;
 
@@ -220,7 +221,7 @@ static int HostMain_ChooseBaseDir(int argc, char **argv, char *baseDir, size_t b
 	return HostSetup_Run(baseDir, baseDirSize);
 #else
 	// Linux: assets/ next to (or above) the binary means a checkout or a
-	// portable install. Android always uses the app's storage.
+	// portable install. Android and iOS always use the app's storage.
 	if (NativeSetup_FindPortableBase(baseDir, baseDirSize))
 	{
 		return -1;
@@ -253,7 +254,7 @@ static int HostMain_PrepareInstall(int *argc, char ***argv)
 		return 0;
 	}
 
-	// NOTE: Finder, desktop launchers and Android discard stdout/stderr, and
+	// NOTE: Finder, desktop launchers, Android and iOS discard stdout/stderr, and
 	// asset errors print there before the game's own log opens.
 	snprintf(s_hostConsoleLog, sizeof(s_hostConsoleLog), "%s/ctr_native-console.log", baseDir);
 	int fd = open(s_hostConsoleLog, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -302,6 +303,13 @@ int main(int argc, char **argv)
 	// Back reaches the game as a key (the host maps it to F1, the menu key)
 	// instead of finishing the activity.
 	SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
+#endif
+#if defined(HOST_IOS)
+	// NOTE: The home indicator fades out until the screen is touched, and a
+	// swipe from the bottom edge needs a second swipe to leave the game.
+	SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2");
+#endif
+#if defined(HOST_MOBILE)
 	// NOTE: SDL lets a resizable window take any orientation; the game is
 	// landscape only.
 	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");

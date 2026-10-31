@@ -10,9 +10,13 @@
 #include <SDL3/SDL.h>
 
 #include "host_mem.h"
+#include "host_platform.h"
+
+#if defined(HOST_GLES)
+#include "host_gl.h"
+#endif
 
 #if defined(__ANDROID__)
-#include "host_gl.h"
 #include "host_presentation_android.h"
 #endif
 
@@ -297,10 +301,89 @@ static void HostSDL_TranslateTextInput(const SDL_TextInputEvent *text, u32 event
 	memcpy(out, &guest, sizeof(guest));
 }
 
+#if defined(HOST_IOS)
+// iOS ends an app that uses OpenGL in the background. The game finishes the
+// frame it is in when the app stops being active, then waits in its next
+// SDL_PollEvent until it is back. Events that arrive meanwhile stay queued.
+static SDL_AtomicInt s_hostSdlInBackground;
+
+static bool SDLCALL HostSDL_WatchLifecycle(void *user, SDL_Event *event)
+{
+	(void)user;
+
+	switch (event->type)
+	{
+	case SDL_EVENT_WILL_ENTER_BACKGROUND:
+		SDL_SetAtomicInt(&s_hostSdlInBackground, 1);
+		break;
+	case SDL_EVENT_DID_ENTER_BACKGROUND:
+		glFinish();
+		break;
+	case SDL_EVENT_DID_ENTER_FOREGROUND:
+	case SDL_EVENT_TERMINATING:
+		SDL_SetAtomicInt(&s_hostSdlInBackground, 0);
+		break;
+	default:
+		break;
+	}
+
+	return true;
+}
+
+static void HostSDL_WaitWhileInBackground(void)
+{
+	static bool s_watching;
+
+	if (!s_watching)
+	{
+		s_watching = SDL_AddEventWatch(HostSDL_WatchLifecycle, NULL);
+	}
+
+	while (SDL_GetAtomicInt(&s_hostSdlInBackground))
+	{
+		SDL_PumpEvents();
+		SDL_Delay(50);
+	}
+}
+
+// iOS has no Back button: a second finger on the screen opens and closes the
+// menu, as F1 does. Turns the touch into an F1 press and queues the release.
+static bool HostSDL_TwoFingerTapToF1(SDL_Event *event)
+{
+	int fingers = 0;
+	SDL_Finger **list = SDL_GetTouchFingers(event->tfinger.touchID, &fingers);
+	SDL_free(list);
+
+	if (fingers != 2)
+	{
+		return false;
+	}
+
+	SDL_WindowID windowID = event->tfinger.windowID;
+	Uint64 timestamp = event->tfinger.timestamp;
+
+	SDL_zerop(event);
+	event->key.type = SDL_EVENT_KEY_UP;
+	event->key.timestamp = timestamp;
+	event->key.windowID = windowID;
+	event->key.scancode = SDL_SCANCODE_F1;
+	event->key.key = SDLK_F1;
+	SDL_PushEvent(event);
+
+	event->key.type = SDL_EVENT_KEY_DOWN;
+	event->key.down = true;
+	return true;
+}
+#endif
+
 u32 w2c_env_SDL_PollEvent(struct w2c_env *env, u32 eventOut)
 {
 	(void)env;
 	SDL_Event event;
+
+#if defined(HOST_IOS)
+	HostSDL_WaitWhileInBackground();
+#endif
 
 	if (eventOut == 0)
 	{
@@ -315,6 +398,13 @@ u32 w2c_env_SDL_PollEvent(struct w2c_env *env, u32 eventOut)
 			HostSDL_TranslateTextInput(&event.text, eventOut);
 			return 1;
 		}
+
+#if defined(HOST_IOS)
+		if ((event.type == SDL_EVENT_FINGER_DOWN) && !HostSDL_TwoFingerTapToF1(&event))
+		{
+			continue;
+		}
+#endif
 
 		if (!HostSDL_IsForwardedEvent(event.type))
 		{
@@ -364,7 +454,8 @@ u32 w2c_env_SDL_CreateWindow(struct w2c_env *env, u32 title, u32 w, u32 h, u64 f
 	{
 		return HostHandle_FromPtr(HostPresentation_CreateWindow());
 	}
-
+#endif
+#if defined(HOST_MOBILE)
 	// NOTE: A phone has one screen; fullscreen also hides the system bars.
 	flags |= SDL_WINDOW_FULLSCREEN;
 #endif
@@ -448,13 +539,15 @@ u32 w2c_env_SDL_GetWindowSafeArea(struct w2c_env *env, u32 window, u32 outRect)
 u32 w2c_env_SDL_SetWindowFullscreen(struct w2c_env *env, u32 window, u32 fullscreen)
 {
 	(void)env;
-#if defined(__ANDROID__)
-	// NOTE: Android has no windowed mode; "Windowed" would only show the system bars.
+#if defined(HOST_MOBILE)
+	// NOTE: Phones have no windowed mode; "Windowed" would only show the system bars.
 	(void)fullscreen;
+#if defined(__ANDROID__)
 	if (HOST_SDL_IS_PRESENTATION(window))
 	{
 		return true;
 	}
+#endif
 	return SDL_SetWindowFullscreen(H2P(SDL_Window, window), true);
 #else
 	return SDL_SetWindowFullscreen(H2P(SDL_Window, window), fullscreen != 0);
@@ -471,9 +564,9 @@ u32 w2c_env_SDL_GL_SetAttribute(struct w2c_env *env, u32 attr, u32 value)
 {
 	(void)env;
 
-#if defined(__ANDROID__)
-	// NOTE: Whatever desktop version the guest asks for, Android gets an
-	// OpenGL ES 3.0 context (host_gles.h covers the differences).
+#if defined(HOST_GLES)
+	// NOTE: Whatever desktop version the guest asks for, Android and iOS get
+	// an OpenGL ES 3.0 context (host_gles.h covers the differences).
 	switch ((SDL_GLAttr)attr)
 	{
 	case SDL_GL_CONTEXT_PROFILE_MASK:
@@ -502,21 +595,24 @@ u32 w2c_env_SDL_GL_CreateContext(struct w2c_env *env, u32 window)
 {
 	(void)env;
 
-#if defined(__ANDROID__)
+#if defined(HOST_GLES)
 	// NOTE: SDL's minimum is 3/3/2 bits, which EGL may meet with RGB565.
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
+#if defined(__ANDROID__)
 	if (HOST_SDL_IS_PRESENTATION(window))
 	{
 		return HostHandle_FromPtr(HostPresentation_CreateContext());
 	}
+#endif
 
 	SDL_GLContext context = SDL_GL_CreateContext(H2P(SDL_Window, window));
 	if (context != NULL)
 	{
+		HostGLES_SetWindow(H2P(SDL_Window, window));
 		HostGLES_InitContext();
 	}
 	return HostHandle_FromPtr(context);
@@ -787,7 +883,16 @@ u32 w2c_env_SDL_GL_MakeCurrent(struct w2c_env *env, u32 window, u32 context)
 	}
 	HostPresentation_LostCurrent();
 #endif
+#if defined(HOST_GLES)
+	bool ok = SDL_GL_MakeCurrent(H2P(SDL_Window, window), (SDL_GLContext)HostHandle_ToPtr(context));
+	if (ok && (window != 0))
+	{
+		HostGLES_SetWindow(H2P(SDL_Window, window));
+	}
+	return ok;
+#else
 	return SDL_GL_MakeCurrent(H2P(SDL_Window, window), (SDL_GLContext)HostHandle_ToPtr(context));
+#endif
 }
 
 u32 w2c_env_SDL_GL_DestroyContext(struct w2c_env *env, u32 context)

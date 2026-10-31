@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
 # NOTE: Must be set before project(). Also the app bundle's LSMinimumSystemVersion.
-if(CMAKE_HOST_APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+# build-ios.sh sets the iOS one.
+if(CMAKE_HOST_APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version" FORCE)
 endif()
 
@@ -10,8 +11,8 @@ include(CheckCCompilerFlag)
 
 set(CTR_NATIVE_VERSION "1.1.1")
 
-# NOTE: macOS cannot run 32-bit executables, so it builds the game as a wasm32
-# (ILP32) sandbox translated to native C. See cmake/ctr_wasm_sandbox.cmake.
+# NOTE: macOS and iOS cannot run 32-bit executables, so they build the game as
+# a wasm32 (ILP32) sandbox translated to native C. See cmake/ctr_wasm_sandbox.cmake.
 if(APPLE)
     option(CTR_NATIVE_SANDBOX "Build the game as a wasm32 sandbox (required on macOS)" ON)
 else()
@@ -20,7 +21,7 @@ endif()
 
 # First-run disc setup and a per-user data folder for packaged builds
 # (platform/setup/). The macOS app bundle has its own AppKit setup window.
-if(WIN32 OR (CTR_NATIVE_SANDBOX AND NOT APPLE))
+if(WIN32 OR (CTR_NATIVE_SANDBOX AND NOT APPLE) OR IOS)
     option(CTR_NATIVE_SETUP "Build first-run disc setup into the executable" ON)
 else()
     option(CTR_NATIVE_SETUP "Build first-run disc setup into the executable" OFF)
@@ -107,11 +108,16 @@ set(SDL_RENDER_D3D11 OFF CACHE BOOL "" FORCE)
 set(SDL_RENDER_D3D12 OFF CACHE BOOL "" FORCE)
 set(SDL_RENDER_METAL OFF CACHE BOOL "" FORCE)
 set(SDL_RENDER_VULKAN OFF CACHE BOOL "" FORCE)
-# Android has OpenGL ES only; the wasm host maps the game's GL 3.3 onto it.
+# Android and iOS have OpenGL ES only; the wasm host maps the game's GL 3.3 onto it.
 if(ANDROID)
     set(SDL_OPENGLES ON CACHE BOOL "" FORCE)
     # SDL's Java side reaches USB controllers; no libusb in the APK.
     set(SDL_HIDAPI_LIBUSB OFF CACHE BOOL "" FORCE)
+elseif(IOS)
+    set(SDL_OPENGLES ON CACHE BOOL "" FORCE)
+    # NOTE: Controllers come through Apple's GameController framework. SDL's
+    # HIDAPI would open CoreBluetooth, which needs a Bluetooth permission prompt.
+    set(SDL_HIDAPI OFF CACHE BOOL "" FORCE)
 else()
     set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
 endif()

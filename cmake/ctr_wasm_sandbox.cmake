@@ -1,4 +1,4 @@
-# Sandbox build (macOS arm64, Linux x86_64, Android): run the 32-bit game as a
+# Sandbox build (macOS arm64, Linux x86_64, Android, iOS): run the 32-bit game as a
 # wasm32 sandbox translated to C, so the host can be any 64-bit platform.
 #
 # 1. main.c (the unity build of game + platform code) and the C++ settings UI
@@ -8,12 +8,12 @@
 # 2. wasm2c turns the module back into C.
 # 3. That C, the wasm2c runtime and the host layer in platform/wasm_host/
 #    (WASI, SDL3 and OpenGL imports) build one native executable (Android:
-#    libmain.so for SDLActivity).
+#    libmain.so for SDLActivity; iOS: the executable of PowerSlide.app).
 #
 # 4. Packaged launches run first-run disc setup in the host before the guest
 #    starts: macOS wraps the executable as PowerSlide.app with an AppKit
 #    window (platform/wasm_host/host_setup_macos.m; package-macos.sh makes the
-#    DMG); Linux and Android use the SDL setup in platform/setup/.
+#    DMG); Linux, Android and iOS use the SDL setup in platform/setup/.
 #
 # Toolchain: tools/wasm/fetch-toolchain.sh installs the pinned wasi-sdk and
 # WABT into externals/.toolchains/. Both run on the build machine, so an
@@ -96,9 +96,18 @@ set(CTR_GUEST_CXX_FLAGS
     -I${CMAKE_SOURCE_DIR}/externals/imgui/backends
     -I${CMAKE_BINARY_DIR}/generated
 )
-if(ANDROID)
+if(ANDROID OR IOS)
     # NOTE: Phones get the touch layout of the settings menu (native_ui.cpp).
     list(APPEND CTR_GUEST_CXX_FLAGS -DCTR_NATIVE_TOUCH_UI)
+endif()
+
+# NOTE: On 64-bit hosts wasm2c reserves 8 GiB of address space for the guest
+# memory and catches stray accesses with guard pages. iOS caps an app's address
+# space well below that, so there the guest memory gets a 1 GiB ceiling (it
+# starts at ~17 MiB) and wasm2c checks bounds instead of reserving guard pages.
+set(CTR_GUEST_LINK_FLAGS)
+if(IOS)
+    list(APPEND CTR_GUEST_LINK_FLAGS -Wl,--max-memory=1073741824)
 endif()
 
 set(CTR_GUEST_CXX_SOURCES
@@ -147,6 +156,7 @@ add_custom_command(
             -lsetjmp
             -Wl,--allow-undefined-file=${CMAKE_SOURCE_DIR}/platform/wasm/imports.syms
             -Wl,-z,stack-size=8388608
+            ${CTR_GUEST_LINK_FLAGS}
     DEPENDS ${CTR_GUEST_OBJECTS} "${CMAKE_SOURCE_DIR}/platform/wasm/imports.syms"
     COMMENT "Linking ctr_guest.wasm"
     VERBATIM
@@ -186,7 +196,9 @@ set(CTR_HOST_SOURCES
     platform/wasm_host/host_gles.c
     platform/setup/disc_import.c
 )
-if(APPLE)
+if(IOS)
+    list(APPEND CTR_HOST_SOURCES platform/setup/native_setup.c platform/setup/native_setup_ios.m)
+elseif(APPLE)
     list(APPEND CTR_HOST_SOURCES platform/wasm_host/host_setup_macos.m)
 else()
     list(APPEND CTR_HOST_SOURCES platform/setup/native_setup.c)
@@ -214,6 +226,9 @@ target_include_directories(ctr_native PRIVATE
     "${CMAKE_SOURCE_DIR}/platform/wasm_host"
 )
 target_compile_options(ctr_native PRIVATE $<$<CONFIG:Release>:-O2>)
+if(IOS)
+    target_compile_definitions(ctr_native PRIVATE WASM_RT_MEMCHECK_BOUNDS_CHECK=1)
+endif()
 # NOTE: wasm2c output trips many harmless warnings (unused labels/params etc).
 set_source_files_properties(${CTR_GUEST_C_FILES} PROPERTIES COMPILE_OPTIONS "-w")
 # NOTE: Only the setup code needs include/ (for native_product.h) and platform/.
@@ -226,7 +241,16 @@ set_source_files_properties(
 )
 target_link_libraries(ctr_native PRIVATE SDL3::SDL3 chdr-static)
 
-if(APPLE)
+if(IOS)
+    set_source_files_properties(platform/setup/native_setup_ios.m PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc"
+    )
+    target_link_libraries(ctr_native PRIVATE
+        "-framework OpenGLES"
+        "-framework UIKit"
+        "-framework UniformTypeIdentifiers"
+    )
+elseif(APPLE)
     set_source_files_properties(platform/wasm_host/host_setup_macos.m PROPERTIES
         COMPILE_OPTIONS "-fobjc-arc"
         INCLUDE_DIRECTORIES "${CTR_HOST_SETUP_INCLUDES}"
@@ -251,8 +275,6 @@ else()
 endif()
 
 if(APPLE)
-    # ---- PowerSlide.app ---------------------------------------------------------
-
     # The bundle takes its name from the user-facing product name; the executable
     # inside keeps the upstream name.
     file(STRINGS "${CMAKE_SOURCE_DIR}/include/platform/native_product.h" ctr_product_line REGEX "define NATIVE_PRODUCT_NAME ")
@@ -260,6 +282,35 @@ if(APPLE)
     string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" CTR_APP_SHORT_VERSION "${CTR_NATIVE_VERSION}")
     set(CTR_APP_DIR "${CMAKE_BINARY_DIR}/${CTR_APP_NAME}.app")
     set(CTR_APP_STAMP "${CMAKE_BINARY_DIR}/ctr_native_app.stamp")
+endif()
+
+if(IOS)
+    # ---- PowerSlide.app (iOS) ---------------------------------------------------
+
+    # A flat iOS bundle, left unsigned: package-ios.sh zips it into an .ipa,
+    # which a sideloading tool (AltStore, SideStore, Sideloadly) signs with the
+    # player's Apple ID. Icons are loose PNGs (no asset catalog, so no Xcode
+    # project is needed).
+    file(GLOB CTR_APP_ICONS "${CMAKE_SOURCE_DIR}/platform/ios/AppIcon*.png")
+    configure_file("${CMAKE_SOURCE_DIR}/platform/ios/Info.plist.in" "${CMAKE_BINARY_DIR}/app/Info.plist" @ONLY)
+
+    add_custom_command(
+        OUTPUT "${CTR_APP_STAMP}"
+        COMMAND "${CMAKE_COMMAND}" -E rm -rf "${CTR_APP_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CTR_APP_DIR}"
+        COMMAND plutil -convert binary1 -o "${CTR_APP_DIR}/Info.plist" "${CMAKE_BINARY_DIR}/app/Info.plist"
+        COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:ctr_native>" "${CTR_APP_DIR}/ctr_native"
+        COMMAND "${CMAKE_COMMAND}" -E copy ${CTR_APP_ICONS} "${CTR_APP_DIR}/"
+        COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "${CTR_APP_DIR}/"
+        COMMAND "${CMAKE_COMMAND}" -E touch "${CTR_APP_STAMP}"
+        DEPENDS ctr_native "${CMAKE_BINARY_DIR}/app/Info.plist" ${CTR_APP_ICONS} "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
+        COMMENT "Assembling ${CTR_APP_NAME}.app (iOS)"
+        VERBATIM
+    )
+    add_custom_target(ctr_native_app ALL DEPENDS "${CTR_APP_STAMP}")
+elseif(APPLE)
+    # ---- PowerSlide.app ---------------------------------------------------------
+
     set(CTR_APP_ICON "${CMAKE_SOURCE_DIR}/platform/macos/PowerSlide.icns")
     configure_file("${CMAKE_SOURCE_DIR}/platform/macos/Info.plist.in" "${CMAKE_BINARY_DIR}/app/Info.plist" @ONLY)
 
@@ -282,7 +333,8 @@ if(APPLE)
 endif()
 
 include(CTest)
-if(BUILD_TESTING)
+# NOTE: An iOS build is a cross-build; its executable cannot run on the build machine.
+if(BUILD_TESTING AND NOT IOS)
     add_test(NAME ctr_native_version COMMAND $<TARGET_FILE:ctr_native> --version)
     set_tests_properties(ctr_native_version PROPERTIES PASS_REGULAR_EXPRESSION "^PowerSlide ")
 

@@ -1,4 +1,4 @@
-// OpenGL ES 3.0 shims for the Android wasm host. See host_gl.h.
+// OpenGL ES 3.0 shims for the Android and iOS wasm hosts. See host_gl.h.
 //
 // The game and ImGui are built against desktop GL 3.3 core. On ES these calls
 // are missing, take fewer formats, or need an extension; each shim keeps the
@@ -15,8 +15,14 @@
 #define HOST_GL_PRIMITIVE_RESTART 0x8F9D
 #define HOST_GL_CONTEXT_PROFILE_MASK 0x9126
 
+#include <SDL3/SDL_video.h>
+
 // Called once a context is current: looks up the extension entry points.
 void HostGLES_InitContext(void);
+// Called when a window's context is made current (iOS: finds its framebuffer).
+void HostGLES_SetWindow(SDL_Window *window);
+
+void HostGLES_BindFramebuffer(GLenum target, GLuint framebuffer);
 
 void HostGLES_PolygonMode(GLenum face, GLenum mode);
 void HostGLES_GetIntegerv(GLenum pname, GLint *data);
@@ -31,6 +37,7 @@ void HostGLES_ReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum
 
 // NOTE: host_gles.c defines HOST_GLES_IMPL to call the real functions.
 #if !defined(HOST_GLES_IMPL)
+#define glBindFramebuffer   HostGLES_BindFramebuffer
 #define glPolygonMode       HostGLES_PolygonMode
 #define glGetIntegerv       HostGLES_GetIntegerv
 #define glEnable            HostGLES_Enable

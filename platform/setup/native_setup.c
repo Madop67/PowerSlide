@@ -1,10 +1,11 @@
-// First-run setup for the packaged Windows, Linux and Android builds. See
-// native_setup.h.
+// First-run setup for the packaged Windows, Linux, Android and iOS builds.
+// See native_setup.h.
 //
 // The flow mirrors the macOS setup window with what SDL offers everywhere:
 // a message box explains what is needed, the system file dialog picks the
-// image (Android: the storage access framework picker), and a small window
-// shows import progress, drawn with SDL_Renderer's built-in debug font.
+// image (Android: the storage access framework picker; iOS: the document
+// picker in native_setup_ios.m), and a small window shows import progress,
+// drawn with SDL_Renderer's built-in debug font.
 
 #include "native_setup.h"
 
@@ -23,6 +24,10 @@
 #include <unistd.h>
 #endif
 
+#if defined(SDL_PLATFORM_IOS)
+#include "native_setup_ios.h"
+#endif
+
 #include "disc_import.h"
 #include "platform/native_product.h"
 
@@ -34,6 +39,10 @@
 #if defined(SDL_PLATFORM_ANDROID)
 #define NATIVE_SETUP_IMAGE_KINDS "a .bin or .chd file"
 #define NATIVE_SETUP_CANCEL_KEY  "Back"
+#define NATIVE_SETUP_COPIED_TO   "It is copied into the app's storage"
+#elif defined(SDL_PLATFORM_IOS)
+#define NATIVE_SETUP_IMAGE_KINDS "a .bin or .chd file"
+#define NATIVE_SETUP_CANCEL_KEY  "Tap"
 #define NATIVE_SETUP_COPIED_TO   "It is copied into the app's storage"
 #elif defined(SDL_PLATFORM_WINDOWS)
 #define NATIVE_SETUP_IMAGE_KINDS "a .cue/.bin pair or a .chd file"
@@ -107,7 +116,7 @@ static int NativeSetup_Parent(char *dir)
 
 int NativeSetup_FindPortableBase(char *baseDir, size_t baseDirSize)
 {
-#if defined(SDL_PLATFORM_ANDROID)
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_IOS)
 	(void)baseDir;
 	(void)baseDirSize;
 	return 0;
@@ -158,6 +167,10 @@ static int NativeSetup_GetDataDir(char *baseDir, size_t baseDirSize)
 	{
 		path = SDL_GetAndroidInternalStoragePath();
 	}
+#elif defined(SDL_PLATFORM_IOS)
+	// The app's Documents folder, which the Files app shows under "On My
+	// iPhone" (UIFileSharingEnabled), so players can reach memory cards and logs.
+	path = SDL_GetUserFolder(SDL_FOLDER_DOCUMENTS);
 #else
 	// %APPDATA%\PowerSlide on Windows, ~/.local/share/PowerSlide on Linux.
 	prefPath = SDL_GetPrefPath(NULL, NATIVE_PRODUCT_NAME);
@@ -201,8 +214,8 @@ void NativeSetup_ShowFatal(const char *message, const char *logPath)
 {
 	char text[2048];
 
-#if defined(SDL_PLATFORM_ANDROID)
-	// NOTE: Android won't open file:// URLs from an app, so name the file.
+#if defined(SDL_PLATFORM_ANDROID) || defined(SDL_PLATFORM_IOS)
+	// NOTE: Android and iOS won't open file:// URLs from an app, so name the file.
 	if (logPath != NULL)
 	{
 		SDL_snprintf(text, sizeof(text), "%s\n\nLog: %s", message, logPath);
@@ -341,6 +354,7 @@ enum NativeSetupPick
 	NATIVE_SETUP_PICK_UNAVAILABLE,
 };
 
+#if !defined(SDL_PLATFORM_IOS)
 struct NativeSetupDialog
 {
 	SDL_AtomicInt state;
@@ -368,9 +382,13 @@ static void SDLCALL NativeSetup_OnFileChosen(void *user, const char *const *file
 		SDL_SetAtomicInt(&dialog->state, NATIVE_SETUP_PICK_CHOSEN);
 	}
 }
+#endif
 
 static enum NativeSetupPick NativeSetup_PickFile(char *path, size_t pathSize)
 {
+#if defined(SDL_PLATFORM_IOS)
+	return NativeSetupIOS_PickFile(path, pathSize) ? NATIVE_SETUP_PICK_CHOSEN : NATIVE_SETUP_PICK_CANCELLED;
+#else
 	static struct NativeSetupDialog dialog;
 
 #if defined(SDL_PLATFORM_ANDROID)
@@ -405,6 +423,7 @@ static enum NativeSetupPick NativeSetup_PickFile(char *path, size_t pathSize)
 	}
 
 	return (enum NativeSetupPick)state;
+#endif
 }
 
 // ---- Import window ----------------------------------------------------------
@@ -525,6 +544,13 @@ static void NativeSetup_Draw(struct NativeSetupWindow *win, const char *line1, c
 
 static int NativeSetup_IsCancelEvent(const SDL_Event *event)
 {
+#if defined(SDL_PLATFORM_IOS)
+	// NOTE: No keyboard to press Esc on; a tap on the setup window cancels.
+	if (event->type == SDL_EVENT_FINGER_DOWN)
+	{
+		return 1;
+	}
+#endif
 	return (event->type == SDL_EVENT_QUIT) || (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) ||
 	       ((event->type == SDL_EVENT_KEY_DOWN) && ((event->key.key == SDLK_ESCAPE) || (event->key.key == SDLK_AC_BACK)));
 }
@@ -689,6 +715,9 @@ static int NativeSetup_Wizard(const char *baseDir, int hasDisc)
 	}
 
 	NativeSetup_CloseWindow(&win);
+#if defined(SDL_PLATFORM_IOS)
+	NativeSetupIOS_ForgetPicked();
+#endif
 	return result;
 }
 
@@ -722,9 +751,10 @@ int NativeSetup_Run(char *baseDir, size_t baseDirSize, int force)
 		result = (hasDisc && !force && !requested) ? 1 : NativeSetup_Wizard(baseDir, hasDisc);
 	}
 
-	// NOTE: The game initialises SDL again for itself. Android keeps it up:
-	// SDLActivity's surface and JNI state belong to the whole process.
-#if !defined(SDL_PLATFORM_ANDROID)
+	// NOTE: The game initialises SDL again for itself. Android and iOS keep it
+	// up: SDLActivity's surface and JNI state, and SDL's UIKit app delegate,
+	// belong to the whole process.
+#if !defined(SDL_PLATFORM_ANDROID) && !defined(SDL_PLATFORM_IOS)
 	SDL_Quit();
 #endif
 	return result;

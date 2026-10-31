@@ -1,34 +1,67 @@
-// OpenGL ES 3.0 shims for the Android wasm host. See host_gles.h.
+// OpenGL ES 3.0 shims for the Android and iOS wasm hosts. See host_gles.h.
 
-#if defined(__ANDROID__)
+#include "host_platform.h"
+
+#if defined(HOST_GLES)
 
 #define HOST_GLES_IMPL 1
 #include "host_gl.h"
 
-#include <EGL/egl.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <SDL3/SDL.h>
 
 // EXT_disjoint_timer_query: GPU timings for the perf overlay, when present.
-static PFNGLGETQUERYOBJECTIVEXTPROC s_hostGlesGetQueryObjectiv;
-static PFNGLGETQUERYOBJECTUI64VEXTPROC s_hostGlesGetQueryObjectui64v;
+// NOTE: iOS's headers have no prototypes for it, so the types are spelled out.
+typedef void (*HostGlesGetQueryObjectivFn)(GLuint id, GLenum pname, GLint *params);
+typedef void (*HostGlesGetQueryObjectui64vFn)(GLuint id, GLenum pname, GLuint64 *params);
+static HostGlesGetQueryObjectivFn s_hostGlesGetQueryObjectiv;
+static HostGlesGetQueryObjectui64vFn s_hostGlesGetQueryObjectui64v;
 static int s_hostGlesHasTimerQuery;
 static int s_hostGlesTimerActive;
+
+#if defined(HOST_IOS)
+// The window's framebuffer: SDL's UIKit view renders into its own FBO, so
+// the guest's framebuffer 0 means this one.
+static GLuint s_hostGlesDefaultFramebuffer;
+#endif
 
 void HostGLES_InitContext(void)
 {
 	s_hostGlesHasTimerQuery = SDL_GL_ExtensionSupported("GL_EXT_disjoint_timer_query");
 	if (s_hostGlesHasTimerQuery)
 	{
-		s_hostGlesGetQueryObjectiv = (PFNGLGETQUERYOBJECTIVEXTPROC)eglGetProcAddress("glGetQueryObjectivEXT");
-		s_hostGlesGetQueryObjectui64v = (PFNGLGETQUERYOBJECTUI64VEXTPROC)eglGetProcAddress("glGetQueryObjectui64vEXT");
+		s_hostGlesGetQueryObjectiv = (HostGlesGetQueryObjectivFn)SDL_GL_GetProcAddress("glGetQueryObjectivEXT");
+		s_hostGlesGetQueryObjectui64v = (HostGlesGetQueryObjectui64vFn)SDL_GL_GetProcAddress("glGetQueryObjectui64vEXT");
 		s_hostGlesHasTimerQuery = (s_hostGlesGetQueryObjectiv != NULL) && (s_hostGlesGetQueryObjectui64v != NULL);
 	}
 
 	SDL_Log("[CTR Native] GLES: %s, %s; timer queries %s", (const char *)glGetString(GL_VERSION), (const char *)glGetString(GL_RENDERER),
 	        s_hostGlesHasTimerQuery ? "on" : "off");
+}
+
+void HostGLES_SetWindow(SDL_Window *window)
+{
+#if defined(HOST_IOS)
+	SDL_PropertiesID props = SDL_GetWindowProperties(window);
+	s_hostGlesDefaultFramebuffer = (GLuint)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
+#else
+	(void)window;
+#endif
+}
+
+// ---- Default framebuffer ----------------------------------------------------
+
+void HostGLES_BindFramebuffer(GLenum target, GLuint framebuffer)
+{
+#if defined(HOST_IOS)
+	if (framebuffer == 0)
+	{
+		framebuffer = s_hostGlesDefaultFramebuffer;
+	}
+#endif
+	glBindFramebuffer(target, framebuffer);
 }
 
 // ---- Fixed-function state ES does not have ----------------------------------
@@ -53,6 +86,18 @@ void HostGLES_GetIntegerv(GLenum pname, GLint *data)
 	case HOST_GL_CONTEXT_PROFILE_MASK:
 		data[0] = 0;
 		return;
+
+#if defined(HOST_IOS)
+	// The guest saves and restores bindings; it knows the window's as 0.
+	case GL_DRAW_FRAMEBUFFER_BINDING:
+	case GL_READ_FRAMEBUFFER_BINDING:
+		glGetIntegerv(pname, data);
+		if ((GLuint)data[0] == s_hostGlesDefaultFramebuffer)
+		{
+			data[0] = 0;
+		}
+		return;
+#endif
 
 	default:
 		glGetIntegerv(pname, data);

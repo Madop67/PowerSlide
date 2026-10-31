@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(__ANDROID__)
+#if defined(HOST_GLES)
 // Joins the guest's shader strings and swaps its desktop "#version 1x0/330"
 // line for GLSL ES 3.00 with default precisions (ES fragment shaders have no
 // default float precision). The game and ImGui shaders are otherwise written
@@ -80,7 +80,7 @@ void HostGL_ShaderSource(struct w2c_env *env, u32 shader, GLsizei count, u32 str
 
 	const GLint *hostLengths = (lengths != 0) ? (const GLint *)HOST_G2H_SIZED(lengths, (u64)count * 4) : NULL;
 
-#if defined(__ANDROID__)
+#if defined(HOST_GLES)
 	char *source = HostGL_ToGlslEs(count, hostStrings, hostLengths);
 	glShaderSource((GLuint)shader, 1, (const GLchar *const *)&source, NULL);
 	free(source);

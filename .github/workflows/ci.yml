@@ -107,6 +107,27 @@ jobs:
             dist/*.apk.sha256
           if-no-files-found: error
 
+  ios:
+    name: iOS (wasm sandbox)
+    # NOTE: An Apple Silicon runner with Xcode; the pinned wasm toolchain has
+    # macOS arm64 binaries.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # build-ios.sh fetches the wasm toolchain, builds with the runner's Xcode
+      # and packages an unsigned .ipa (signed by the sideloading tool on install).
+      - name: Build and package
+        run: ./build-ios.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: powerslide-ios
+          path: |
+            dist/*.ipa
+            dist/*.ipa.sha256
+          if-no-files-found: error
+
   windows:
     name: Windows x86 (MSVC)
     runs-on: windows-2022

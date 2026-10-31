@@ -1,4 +1,4 @@
-// First-run setup for the packaged Windows, Linux and Android builds.
+// First-run setup for the packaged Windows, Linux, Android and iOS builds.
 //
 // The counterpart of the macOS app bundle's AppKit setup window
 // (platform/wasm_host/host_setup_macos.m), built on SDL3 alone: picks the
