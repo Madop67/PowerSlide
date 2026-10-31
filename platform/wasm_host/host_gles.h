@@ -23,6 +23,8 @@ void HostGLES_InitContext(void);
 void HostGLES_SetWindow(SDL_Window *window);
 
 void HostGLES_BindFramebuffer(GLenum target, GLuint framebuffer);
+// SDL_GL_SwapWindow for the game's window (iOS: presents the window's renderbuffer).
+bool HostGLES_SwapWindow(SDL_Window *window);
 
 void HostGLES_PolygonMode(GLenum face, GLenum mode);
 void HostGLES_GetIntegerv(GLenum pname, GLint *data);

@@ -23,8 +23,10 @@ static int s_hostGlesTimerActive;
 
 #if defined(HOST_IOS)
 // The window's framebuffer: SDL's UIKit view renders into its own FBO, so
-// the guest's framebuffer 0 means this one.
+// the guest's framebuffer 0 means this one. Its colour renderbuffer is what
+// iOS shows on a swap.
 static GLuint s_hostGlesDefaultFramebuffer;
+static GLuint s_hostGlesDefaultRenderbuffer;
 #endif
 
 void HostGLES_InitContext(void)
@@ -39,6 +41,12 @@ void HostGLES_InitContext(void)
 
 	SDL_Log("[CTR Native] GLES: %s, %s; timer queries %s", (const char *)glGetString(GL_VERSION), (const char *)glGetString(GL_RENDERER),
 	        s_hostGlesHasTimerQuery ? "on" : "off");
+
+#if defined(HOST_IOS)
+	// NOTE: Leaves the window's framebuffer bound, which the guest knows as 0.
+	glBindFramebuffer(GL_FRAMEBUFFER, s_hostGlesDefaultFramebuffer);
+	SDL_Log("[CTR Native] GLES: window framebuffer %u, status 0x%04x", s_hostGlesDefaultFramebuffer, glCheckFramebufferStatus(GL_FRAMEBUFFER));
+#endif
 }
 
 void HostGLES_SetWindow(SDL_Window *window)
@@ -46,12 +54,29 @@ void HostGLES_SetWindow(SDL_Window *window)
 #if defined(HOST_IOS)
 	SDL_PropertiesID props = SDL_GetWindowProperties(window);
 	s_hostGlesDefaultFramebuffer = (GLuint)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
+	s_hostGlesDefaultRenderbuffer = (GLuint)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_OPENGL_RENDERBUFFER_NUMBER, 0);
 #else
 	(void)window;
 #endif
 }
 
 // ---- Default framebuffer ----------------------------------------------------
+
+bool HostGLES_SwapWindow(SDL_Window *window)
+{
+#if defined(HOST_IOS)
+	// NOTE: SDL's UIKit view presents whatever renderbuffer is bound, and the
+	// game leaves its own (or none) bound after making render targets.
+	GLint guestRenderbuffer = 0;
+	glGetIntegerv(GL_RENDERBUFFER_BINDING, &guestRenderbuffer);
+	glBindRenderbuffer(GL_RENDERBUFFER, s_hostGlesDefaultRenderbuffer);
+	bool ok = SDL_GL_SwapWindow(window);
+	glBindRenderbuffer(GL_RENDERBUFFER, (GLuint)guestRenderbuffer);
+	return ok;
+#else
+	return SDL_GL_SwapWindow(window);
+#endif
+}
 
 void HostGLES_BindFramebuffer(GLenum target, GLuint framebuffer)
 {

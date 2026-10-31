@@ -648,7 +648,11 @@ u32 w2c_env_SDL_GL_SwapWindow(struct w2c_env *env, u32 window)
 		return HostPresentation_Swap();
 	}
 #endif
+#if defined(HOST_GLES)
+	return HostGLES_SwapWindow(H2P(SDL_Window, window));
+#else
 	return SDL_GL_SwapWindow(H2P(SDL_Window, window));
+#endif
 }
 
 u32 w2c_env_SDL_SetWindowSize(struct w2c_env *env, u32 window, u32 w, u32 h)

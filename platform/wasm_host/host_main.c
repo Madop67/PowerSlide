@@ -175,6 +175,20 @@ static int HostMain_HasArg(int argc, char **argv, const char *name)
 	return 0;
 }
 
+#if defined(HOST_IOS)
+// NOTE: SDL_Log goes to the system log on iOS, out of the player's reach; the
+// console log in the Files app gets a copy too.
+static SDL_LogOutputFunction s_hostSystemLog;
+static void *s_hostSystemLogData;
+
+static void SDLCALL HostMain_LogToConsole(void *user, int category, SDL_LogPriority priority, const char *message)
+{
+	(void)user;
+	fprintf(stderr, "%s\n", message);
+	s_hostSystemLog(s_hostSystemLogData, category, priority, message);
+}
+#endif
+
 static int s_hostInstalled;
 static char s_hostConsoleLog[4096];
 
@@ -305,6 +319,9 @@ int main(int argc, char **argv)
 	SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 #endif
 #if defined(HOST_IOS)
+	SDL_GetLogOutputFunction(&s_hostSystemLog, &s_hostSystemLogData);
+	SDL_SetLogOutputFunction(HostMain_LogToConsole, NULL);
+
 	// NOTE: The home indicator fades out until the screen is touched, and a
 	// swipe from the bottom edge needs a second swipe to leave the game.
 	SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2");
